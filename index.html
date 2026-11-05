@@ -1,0 +1,1600 @@
+<!DOCTYPE html>
+<html lang="id" data-theme="light">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover"/>
+  <meta name="theme-color" content="#1E7E34"/>
+  <title>GRPC Logistics | Goods Received Photo &amp; Checklist</title>
+  
+
+  <!-- Login dapat tampil sebelum library eksternal selesai dimuat. -->
+  <style id="grpc-critical-style">
+    :root { --bg-app:#f1f5f9; --bg-surface:#fff; --bg-surface-subtle:#f8fafc; --text-main:#0f172a; --text-muted:#64748b; --primary:#1e7e34; --border-medium:#cbd5e1; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg-app); color:var(--text-main); font-family:Arial,sans-serif; }
+    .app-section:not(.active) { display:none !important; }
+    .app-section.active { display:flex; opacity:1; }
+    body.is-logged-out header, body.is-logged-out #grpc-status-strip, body.is-logged-out #mobileNavMenu { display:none !important; }
+    body.is-logged-out main { padding-top:0 !important; }
+    #section-login { width:100%; min-height:100vh; padding:20px; align-items:center; justify-content:center; }
+    #section-login > div { width:100%; max-width:480px; background:var(--bg-surface); border:1px solid var(--border-medium); border-radius:20px; overflow:hidden; }
+    #section-login > div > div:first-child { background:var(--primary); color:white; padding:12px 20px; }
+    #section-login > div > div:last-child { padding:24px; }
+    #section-login form { display:flex; flex-direction:column; gap:18px; margin-top:24px; }
+    #section-login form label { display:block; margin-bottom:8px; font-size:13px; font-weight:700; }
+    #section-login form input { width:100%; min-height:48px; padding:12px !important; font-size:16px; color:var(--text-main); background:var(--bg-surface-subtle); border:1px solid var(--border-medium) !important; border-radius:10px; }
+    #login-submit-btn { min-height:48px; border:0; border-radius:10px; color:white; background:var(--primary); font-weight:700; }
+    #grpc-startup-error { position:relative; z-index:2000; margin:12px; padding:16px; border:1px solid #f59e0b; border-radius:10px; background:#fffbeb; color:#78350f; font:14px Arial,sans-serif; }
+    [hidden] { display:none !important; }
+  </style>
+
+  <!-- Web Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/>
+  
+  <!-- SheetJS (xlsx) for .xlsx generation & parsing -->
+  <!-- Tailwind CSS CDN -->
+  <script defer src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  
+  <!-- Modular Stylesheet Include -->
+  <link rel="stylesheet" href="css/style.css"/>
+
+  <style id="grpc-item-print-controls">
+    [data-report-nav] { display:none !important; }
+    .report-action-btn-group .btn-action-report, .btn-action-report {
+      width:36px; min-width:36px; height:36px; min-height:36px; padding:6px;
+      flex:0 0 auto; display:inline-flex; align-items:center; justify-content:center;
+    }
+    @media(pointer:coarse) { .report-action-btn-group .btn-action-report, .btn-action-report { width:44px; min-width:44px; height:44px; min-height:44px; } }
+    .btn-action-report[aria-busy="true"] { opacity:.5; cursor:wait; }
+  </style>
+
+</head>
+<body class="is-logged-out bg-[var(--bg-app)] text-[var(--text-main)] antialiased min-h-screen flex flex-col">
+
+
+  <div id="grpc-startup-error" role="alert" hidden></div>
+  <noscript><p style="padding:20px">Aktifkan JavaScript pada browser untuk login dan menggunakan GRPC.</p></noscript>
+  <script>
+    window.grpcSubmitLogin = function(event) {
+      event.preventDefault();
+      if (typeof window.handleLoginSubmit !== 'function') {
+        window.grpcBootError('Javascript belum dapat dijalankan. Perbarui Code.gs, Index, Javascript dan Stylesheet dari paket yang sama, lalu deployment versi baru.');
+        return false;
+      }
+      window.handleLoginSubmit(event);
+      return false;
+    };
+    window.grpcBootError = function(message) {
+      var box = document.getElementById('grpc-startup-error');
+      if (box) { box.textContent = 'GRPC: ' + message + ' Muat ulang halaman. Jika berulang, kirim pesan ini kepada administrator.'; box.hidden = false; }
+    };
+    window.addEventListener('error', function(event) {
+      if (!window.grpcBooted && event.message) window.grpcBootError(event.message);
+    });
+    window.addEventListener('load', function() {
+      if (!window.grpcBooted) window.grpcBootError('Script aplikasi belum berhasil dimuat. Periksa file HTML Javascript dan versi deployment.');
+    });
+  </script>
+
+  <!-- ── 1. GLOBAL APP HEADER (STICKY) ── -->
+  <header class="fixed top-0 left-0 right-0 z-40 bg-[var(--bg-surface)] border-b border-[var(--border-light)] shadow-sm h-16 no-print">
+    <div class="h-full px-4 lg:px-6 flex items-center justify-between gap-4">
+      
+      <!-- Brand & Section Navigation -->
+      <div class="flex items-center gap-4 lg:gap-6">
+        <div class="flex items-center gap-3 cursor-pointer" onclick="navigateTo('materialMaster')">
+          <div class="w-10 h-10 rounded-lg bg-[var(--primary)] text-white flex items-center justify-center shadow-md shadow-emerald-700/20">
+            <span class="material-symbols-outlined text-[22px]">photo_camera</span>
+          </div>
+          <div class="flex flex-col">
+            <div class="flex items-center gap-2">
+              <span class="font-display font-bold text-base tracking-tight text-[var(--text-main)]">GRPC SYSTEM</span>
+              <span class="font-code text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-300">v2.4</span>
+            </div>
+            <span class="font-code text-[11px] text-[var(--text-muted)] font-medium tracking-wide">DOCK RECEIVING &amp; INTAKE</span>
+          </div>
+        </div>
+
+        <div class="h-7 w-px bg-[var(--border-light)] hidden lg:block"></div>
+
+        <!-- Navigation Tabs: Always Visible & Instant Active Switching -->
+        <nav class="hidden lg:flex items-center gap-1.5 font-code text-xs">
+          <!-- 1. Dedicated Dashboard (KPI, KRI-RCV, Expedite-Gate, CAR Audit) -->
+          <button id="nav-dashboard" onclick="navigateTo('dashboard')" class="nav-tab-btn px-3 py-1.5 rounded-lg font-semibold text-[var(--text-muted)] hover:text-[var(--text-main)] hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors flex items-center gap-1.5">
+            <span class="material-symbols-outlined text-[16px] text-emerald-600">analytics</span>
+            Dashboard KRI/KPI [W-00]
+          </button>
+          <!-- 2. Material Master (Inventory & Receiving Manifest Table) -->
+          <button id="nav-materialMaster" onclick="navigateTo('materialMaster')" class="nav-tab-btn px-3.5 py-1.5 rounded-lg font-bold text-white bg-[var(--primary)] shadow-sm flex items-center gap-1.5 tracking-wide">
+            <span class="material-symbols-outlined text-[16px]">inventory_2</span>
+            Material Master [W-04]
+          </button>
+          <!-- Mobile Inspection -->
+          <button id="nav-mobileInspection" onclick="navigateTo('mobileInspection')" class="nav-tab-btn px-3 py-1.5 rounded-lg font-semibold text-[var(--text-muted)] hover:text-[var(--text-main)] hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors flex items-center gap-1.5">
+            <span class="material-symbols-outlined text-[15px]">photo_camera</span>
+            Mobile Inspection [W-02]
+          </button>
+          <!-- Print Preview -->
+          <button id="nav-printPreview" data-report-nav hidden onclick="navigateTo('printPreview')" class="nav-tab-btn px-3 py-1.5 rounded-lg font-semibold text-[var(--text-muted)] hover:text-[var(--text-main)] hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors flex items-center gap-1.5">
+            <span class="material-symbols-outlined text-[15px]">print</span>
+            Report Print Preview [W-07]
+          </button>
+          <!-- User & Role Admin (Always Visible) -->
+          <button id="nav-userAdmin" onclick="navigateTo('userAdmin')" class="nav-tab-btn px-3 py-1.5 rounded-lg font-semibold text-[var(--text-muted)] hover:text-[var(--text-main)] hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors flex items-center gap-1.5">
+            <span class="material-symbols-outlined text-[15px]">admin_panel_settings</span>
+            User &amp; Role Admin [W-08]
+          </button>
+        </nav>
+      </div>
+
+      <!-- Quick Controls & User Profile -->
+      <div class="flex items-center gap-2 sm:gap-3">
+        <!-- Live Search Field -->
+        <div class="hidden sm:flex items-center bg-[var(--bg-surface-subtle)] focus-within:bg-[var(--bg-surface)] focus-within:ring-2 focus-within:ring-[var(--primary)]/30 border border-[var(--border-medium)] rounded-lg px-3 py-1.5 transition-all">
+          <span class="material-symbols-outlined text-slate-400 text-[18px] mr-2">search</span>
+          <input type="text" id="global-search-input" oninput="handleGlobalSearch(this.value)" placeholder="QUERY://PO_OR_WAYBILL..." class="bg-transparent font-code text-xs text-[var(--text-main)] outline-none w-36 md:w-48 placeholder:text-slate-400 font-normal"/>
+          <kbd class="font-code text-[10px] text-slate-400 bg-white border border-slate-300 rounded px-1.5 py-0.5 font-semibold">/</kbd>
+        </div>
+
+        <!-- Theme Toggle Switcher -->
+        <button onclick="toggleTheme()" class="w-9 h-9 rounded-lg border border-[var(--border-medium)] bg-[var(--bg-surface)] hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 flex items-center justify-center transition-colors" title="Toggle Dark/Light Mode">
+          <span class="material-symbols-outlined text-[20px] text-[#0288D1]">contrast</span>
+        </button>
+
+        <div class="h-6 w-px bg-[var(--border-light)] hidden sm:block"></div>
+
+        <!-- User Profile Pill (Click to open login/switch modal) -->
+        <div onclick="navigateTo('login')" class="flex items-center gap-2 bg-[var(--bg-surface-subtle)] hover:bg-slate-100 dark:hover:bg-slate-800 border border-[var(--border-medium)] rounded-full pl-3 pr-1.5 py-1 cursor-pointer transition-colors" title="Klik untuk Ganti Akun / Login">
+          <div class="flex flex-col text-right">
+            <span id="header-user-name" class="font-display text-xs font-bold leading-tight">Belum login</span>
+            <span id="header-user-role" class="font-code text-[10px] text-[var(--primary)] font-semibold">GRPC</span>
+          </div>
+          <div id="header-user-avatar" class="w-7 h-7 rounded-full bg-[var(--primary)] text-white flex items-center justify-center font-bold text-xs shadow-inner">
+            AD
+          </div>
+        </div>
+
+        <!-- Mobile Navigation Hamburger Dropdown -->
+        <button onclick="toggleMobileNavMenu()" class="lg:hidden w-9 h-9 rounded-lg border border-[var(--border-medium)] flex items-center justify-center text-slate-700 dark:text-slate-200">
+          <span class="material-symbols-outlined text-[22px]">menu</span>
+        </button>
+      </div>
+
+    </div>
+
+    <!-- Mobile Navigation Drawer Menu -->
+    <div id="mobileNavMenu" class="hidden lg:hidden bg-[var(--bg-surface)] border-b border-[var(--border-light)] px-4 py-3 flex flex-col gap-2 font-code text-xs shadow-xl">
+      <button onclick="navigateTo('materialMaster'); toggleMobileNavMenu();" class="text-left py-2 px-3 rounded hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-2">
+        <span class="material-symbols-outlined text-[16px] text-[#0288D1]">inventory_2</span> Material Master &amp; KPI [W-04]
+      </button>
+      <button onclick="navigateTo('mobileInspection'); toggleMobileNavMenu();" class="text-left py-2 px-3 rounded hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-2">
+        <span class="material-symbols-outlined text-[16px] text-[#1E7E34]">photo_camera</span> Mobile Inspection [W-02]
+      </button>
+      <button data-report-nav hidden onclick="navigateTo('printPreview'); toggleMobileNavMenu();" class="text-left py-2 px-3 rounded hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-2">
+        <span class="material-symbols-outlined text-[16px] text-amber-600">print</span> Report Print Preview [W-07]
+      </button>
+      <button onclick="navigateTo('userAdmin'); toggleMobileNavMenu();" class="text-left py-2 px-3 rounded hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-2">
+        <span class="material-symbols-outlined text-[16px] text-purple-600">admin_panel_settings</span> User &amp; Role Admin [W-08]
+      </button>
+      <button onclick="navigateTo('login'); toggleMobileNavMenu();" class="text-left py-2 px-3 rounded text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 flex items-center gap-2 border-t border-slate-100 dark:border-slate-800 pt-2 mt-1">
+        <span class="material-symbols-outlined text-[16px]">logout</span> Terminal Switch / Login
+      </button>
+    </div>
+  </header>
+
+  <div id="grpc-status-strip" class="fixed top-16 left-0 right-0 z-30 bg-[var(--bg-surface-subtle)] px-4 py-1.5 text-xs no-print">GRPC · Goods Received Photo &amp; Checklist</div>
+
+  <!-- ── 3. MAIN WORKSPACE VIEWPORT ── -->
+  <main class="w-full pt-[92px] flex-1 flex flex-col">
+
+    <!-- ==================================================================== -->
+    <!-- SECTION W-04: MATERIAL MASTER DASHBOARD & AUDIT LOG (DEFAULT ACTIVE) -->
+    <!-- ==================================================================== -->
+        <!-- ==================================================================== -->
+    <!-- SECTION W-00: DEDICATED EXECUTIVE & LOGISTICS DASHBOARD              -->
+    <!-- KRI-RCV (Risk Control) | EXPEDITE-GATE (Priority) | CAR AUDIT (QA)   -->
+    <!-- ==================================================================== -->
+    <section id="section-dashboard" class="app-section w-full flex-1 flex flex-col px-4 lg:px-6 py-3">
+      <div class="max-w-[1720px] w-full mx-auto flex flex-col gap-4">
+        
+        <!-- Dashboard Header & Control Bar -->
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[var(--bg-surface)] p-3.5 rounded-xl border border-[var(--border-medium)] shadow-sm">
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="px-2 py-0.5 text-[11px] font-bold font-code bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 rounded border border-emerald-300 dark:border-emerald-800">
+                W-00 // LOGISTICS KPI &amp; RISK CONTROL
+              </span>
+              <h1 class="font-display font-extrabold text-xl text-[var(--text-main)] tracking-tight">Executive Receiving Dashboard</h1>
+            </div>
+            <p class="text-[var(--text-muted)] text-xs mt-0.5">Real-time KRI-RCV Monitoring, Expedite-Gate Priorities, and CAR Quality Findings.</p>
+          </div>
+          <div class="flex items-center gap-2 flex-wrap font-code text-xs">
+            <span id="dash-overall-score" class="px-3 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-bold border border-emerald-200 dark:border-emerald-800 flex items-center gap-1.5">
+              <span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+              96.5% COMPLIANCE
+            </span>
+            <button type="button" onclick="refreshMaterialData()" class="px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 font-bold text-[var(--text-main)] flex items-center gap-1 shadow-sm">
+              <span class="material-symbols-outlined text-[15px] text-emerald-600">sync</span>
+              <span>Sync Data</span>
+            </button>
+            <button type="button" onclick="navigateTo('materialMaster')" class="touch-target-btn btn-secondary-action h-8 min-h-[34px] text-xs gap-1.5 px-3">
+              <span class="material-symbols-outlined text-[16px]">inventory_2</span>
+              <span>Buka Material Master [W-04]</span>
+            </button>
+            <button type="button" onclick="navigateTo('mobileInspection')" class="touch-target-btn btn-primary-action h-8 min-h-[34px] text-xs gap-1.5 px-3">
+              <span class="material-symbols-outlined text-[16px]">add_a_photo</span>
+              <span>+ Input Barang [W-02]</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- ROW 1: 4 TOP HERO METRIC TILES -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 w-full font-code">
+          <!-- 1. KRI-RCV TODAY (Green) -->
+          <div class="kpi-tile border-emerald-200 bg-gradient-to-br from-emerald-50/30 to-transparent p-4 rounded-xl border shadow-sm">
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">
+                KRI-RCV // TODAY
+              </span>
+              <div class="w-8 h-8 rounded-lg bg-emerald-100 text-[#1E7E34] flex items-center justify-center">
+                <span class="material-symbols-outlined text-[19px]">inventory_2</span>
+              </div>
+            </div>
+            <div class="mt-2.5 flex items-baseline gap-2">
+              <span id="dash-today-count" class="font-display text-3xl font-extrabold text-[#1E7E34] tracking-tight">34</span>
+              <span class="font-display text-xs font-bold text-slate-800 dark:text-slate-200">Items Received Today</span>
+            </div>
+            <p class="text-[11px] text-slate-500 mt-1 font-body">Verified dock intake manifests</p>
+            <div class="mt-3 pt-2.5 border-t border-emerald-100 dark:border-emerald-900/50 flex items-center justify-between text-[11px]">
+              <span class="font-bold text-[#1E7E34]">97.2% ON-SCHEDULE</span>
+              <button type="button" onclick="filterMasterBy('today')" class="text-emerald-700 hover:underline font-bold flex items-center gap-0.5">
+                Lihat PO Hari Ini &rarr;
+              </button>
+            </div>
+          </div>
+
+          <!-- 2. EXPEDITE-GATE (Amber/Orange) -->
+          <div class="kpi-tile border-amber-200 bg-gradient-to-br from-amber-50/30 to-transparent p-4 rounded-xl border shadow-sm">
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] font-bold uppercase tracking-wider text-[#F57C00] bg-amber-100 px-2 py-0.5 rounded">
+                EXPEDITE-GATE // PRIORITY
+              </span>
+              <div class="w-8 h-8 rounded-lg bg-amber-100 text-[#F57C00] flex items-center justify-center">
+                <span class="material-symbols-outlined text-[19px]">warning</span>
+              </div>
+            </div>
+            <div class="mt-2.5 flex items-baseline gap-2">
+              <span id="dash-urgent-count" class="font-display text-3xl font-extrabold text-[#F57C00] tracking-tight">03</span>
+              <span class="font-display text-xs font-bold text-slate-800 dark:text-slate-200">Urgent &amp; Emergency</span>
+            </div>
+            <p class="text-[11px] text-slate-500 mt-1 font-body">Priority routing to Assembly Bay</p>
+            <div class="mt-3 pt-2.5 border-t border-amber-100 dark:border-amber-900/50 flex items-center justify-between text-[11px]">
+              <span class="font-bold text-amber-800 dark:text-amber-400 bg-amber-100 dark:bg-amber-950 px-1.5 py-0.5 rounded text-[10px] animate-pulse">EXPEDITE ACTIVE</span>
+              <button type="button" onclick="filterMasterBy('urgent')" class="text-amber-700 hover:underline font-bold flex items-center gap-0.5">
+                Filter Expedite &rarr;
+              </button>
+            </div>
+          </div>
+
+          <!-- 3. CAR AUDIT (Crimson) -->
+          <div class="kpi-tile border-red-200 bg-gradient-to-br from-red-50/30 to-transparent p-4 rounded-xl border shadow-sm">
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] font-bold uppercase tracking-wider text-[#D32F2F] bg-red-100 px-2 py-0.5 rounded">
+                CAR AUDIT // DEFECT / QA HOLD
+              </span>
+              <div class="w-8 h-8 rounded-lg bg-red-100 text-[#D32F2F] flex items-center justify-center">
+                <span class="material-symbols-outlined text-[19px]">report_problem</span>
+              </div>
+            </div>
+            <div class="mt-2.5 flex items-baseline gap-2">
+              <span id="dash-defect-count" class="font-display text-3xl font-extrabold text-[#D32F2F] tracking-tight">02</span>
+              <span class="font-display text-xs font-bold text-slate-800 dark:text-slate-200">Defect / CAR Findings</span>
+            </div>
+            <p class="text-[11px] text-slate-500 mt-1 font-body">Packaging or Quality QA hold</p>
+            <div class="mt-3 pt-2.5 border-t border-red-100 dark:border-red-900/50 flex items-center justify-between text-[11px]">
+              <span class="font-bold text-red-800 dark:text-red-400 bg-red-100 dark:bg-red-950 px-1.5 py-0.5 rounded text-[10px]">QUARANTINE LOCK</span>
+              <button type="button" onclick="filterMasterBy('car')" class="text-red-700 hover:underline font-bold flex items-center gap-0.5">
+                Filter Temuan CAR &rarr;
+              </button>
+            </div>
+          </div>
+
+          <!-- 4. PARTIAL BACKLOG (Sky Blue) -->
+          <div class="kpi-tile border-sky-200 bg-gradient-to-br from-sky-50/30 to-transparent p-4 rounded-xl border shadow-sm">
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] font-bold uppercase tracking-wider text-[#0288D1] bg-sky-100 px-2 py-0.5 rounded">
+                INTAKE // PARTIAL BACKLOG
+              </span>
+              <div class="w-8 h-8 rounded-lg bg-sky-100 text-[#0288D1] flex items-center justify-center">
+                <span class="material-symbols-outlined text-[19px]">pending_actions</span>
+              </div>
+            </div>
+            <div class="mt-2.5 flex items-baseline gap-2">
+              <span id="dash-partial-count" class="font-display text-3xl font-extrabold text-[#0288D1] tracking-tight">02</span>
+              <span class="font-display text-xs font-bold text-slate-800 dark:text-slate-200">Partial Deliveries</span>
+            </div>
+            <p class="text-[11px] text-slate-500 mt-1 font-body">Pending remaining delivery units</p>
+            <div class="mt-3 pt-2.5 border-t border-sky-100 dark:border-sky-900/50 flex items-center justify-between text-[11px]">
+              <span id="dash-remain-qty-badge" class="font-bold text-sky-800 dark:text-sky-300 bg-sky-100 dark:bg-sky-950 px-1.5 py-0.5 rounded text-[10px]">6 EA REMAIN</span>
+              <button type="button" onclick="filterMasterBy('partial')" class="text-sky-700 hover:underline font-bold flex items-center gap-0.5">
+                Filter Partial &rarr;
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ROW 2: THE 3 DEEP-DIVE ANALYTICAL PANELS -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 w-full">
+          
+          <!-- PANEL 1: KRI-RCV (RECEIVING KEY RISK INDICATORS) -->
+          <div class="bg-[var(--bg-surface)] rounded-xl border border-[var(--border-medium)] p-4 shadow-sm flex flex-col justify-between">
+            <div>
+              <div class="flex items-center justify-between border-b border-[var(--border-medium)] pb-3 mb-3">
+                <div class="flex items-center gap-2">
+                  <div class="w-7 h-7 rounded-lg bg-emerald-100 dark:bg-emerald-950 text-[#1E7E34] flex items-center justify-center">
+                    <span class="material-symbols-outlined text-[18px]">verified_user</span>
+                  </div>
+                  <div>
+                    <h2 class="font-bold font-code text-xs text-[var(--text-main)] uppercase tracking-wider">1. KRI-RCV (Risk Control)</h2>
+                    <p class="text-[11px] text-[var(--text-muted)] font-body">Kepatuhan kondisi penerimaan fisik</p>
+                  </div>
+                </div>
+                <span class="text-[10px] font-bold font-code bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded">INTAKE QA</span>
+              </div>
+
+              <!-- 4 Risk Compliance Bars -->
+              <div class="flex flex-col gap-3 font-code text-xs">
+                <!-- Packaging -->
+                <div>
+                  <div class="flex justify-between items-center mb-1">
+                    <span class="text-slate-600 dark:text-slate-300 font-semibold">Integritas Packaging (Kemasan)</span>
+                    <span id="kri-pack-text" class="text-emerald-700 font-bold">100% (Good)</span>
+                  </div>
+                  <div class="w-full bg-slate-200 dark:bg-slate-700 h-2 rounded-full overflow-hidden">
+                    <div id="kri-pack-bar" class="bg-[#1E7E34] h-full rounded-full transition-all duration-300" style="width: 100%"></div>
+                  </div>
+                </div>
+
+                <!-- Document Completion -->
+                <div>
+                  <div class="flex justify-between items-center mb-1">
+                    <span class="text-slate-600 dark:text-slate-300 font-semibold">Kelengkapan Dokumen (DO/MTC)</span>
+                    <span id="kri-doc-text" class="text-emerald-700 font-bold">100% (Complete)</span>
+                  </div>
+                  <div class="w-full bg-slate-200 dark:bg-slate-700 h-2 rounded-full overflow-hidden">
+                    <div id="kri-doc-bar" class="bg-[#1E7E34] h-full rounded-full transition-all duration-300" style="width: 100%"></div>
+                  </div>
+                </div>
+
+                <!-- Material Spec -->
+                <div>
+                  <div class="flex justify-between items-center mb-1">
+                    <span class="text-slate-600 dark:text-slate-300 font-semibold">Kesesuaian Spesifikasi Teknis</span>
+                    <span id="kri-spec-text" class="text-emerald-700 font-bold">100% (Suitable)</span>
+                  </div>
+                  <div class="w-full bg-slate-200 dark:bg-slate-700 h-2 rounded-full overflow-hidden">
+                    <div id="kri-spec-bar" class="bg-[#1E7E34] h-full rounded-full transition-all duration-300" style="width: 100%"></div>
+                  </div>
+                </div>
+
+                <!-- Material Quality -->
+                <div>
+                  <div class="flex justify-between items-center mb-1">
+                    <span class="text-slate-600 dark:text-slate-300 font-semibold">Kualitas Fisik &amp; Bebas Cacat</span>
+                    <span id="kri-qual-text" class="text-emerald-700 font-bold">75% (3 Good / 1 Bad)</span>
+                  </div>
+                  <div class="w-full bg-slate-200 dark:bg-slate-700 h-2 rounded-full overflow-hidden">
+                    <div id="kri-qual-bar" class="bg-[#D32F2F] h-full rounded-full transition-all duration-300" style="width: 75%"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="mt-4 pt-3 border-t border-[var(--border-medium)] flex items-center justify-between">
+              <span class="text-[11px] text-slate-500 font-code">Risk Threshold: &lt; 5%</span>
+              <button type="button" onclick="filterMasterBy('risk')" class="text-xs font-bold text-[var(--primary)] hover:underline flex items-center gap-1 font-code">
+                <span>Filter Item Berisiko</span>
+                <span class="material-symbols-outlined text-[14px]">arrow_forward</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- PANEL 2: EXPEDITE-GATE (PRIORITY QUEUE) -->
+          <div class="bg-[var(--bg-surface)] rounded-xl border border-[var(--border-medium)] p-4 shadow-sm flex flex-col justify-between">
+            <div>
+              <div class="flex items-center justify-between border-b border-[var(--border-medium)] pb-3 mb-3">
+                <div class="flex items-center gap-2">
+                  <div class="w-7 h-7 rounded-lg bg-amber-100 dark:bg-amber-950 text-[#F57C00] flex items-center justify-center">
+                    <span class="material-symbols-outlined text-[18px]">bolt</span>
+                  </div>
+                  <div>
+                    <h2 class="font-bold font-code text-xs text-[var(--text-main)] uppercase tracking-wider">2. EXPEDITE-GATE (Rush Queue)</h2>
+                    <p class="text-[11px] text-[var(--text-muted)] font-body">Antrian barang darurat langsung ke Bay</p>
+                  </div>
+                </div>
+                <span class="text-[10px] font-bold font-code bg-amber-100 text-amber-800 px-2 py-0.5 rounded animate-pulse">PRIORITY</span>
+              </div>
+
+              <!-- Expedite Queue Preview Table -->
+              <div class="overflow-x-auto">
+                <table class="w-full text-left font-code text-xs">
+                  <thead>
+                    <tr class="text-[10px] text-slate-400 border-b border-slate-100 dark:border-slate-800 uppercase">
+                      <th class="pb-1.5">PO / Material</th>
+                      <th class="pb-1.5">Deskripsi</th>
+                      <th class="pb-1.5">Status</th>
+                      <th class="pb-1.5 text-right">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody id="dash-expedite-tbody">
+                    <!-- Populated dynamically by renderDashboard() -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="mt-4 pt-3 border-t border-[var(--border-medium)] flex items-center justify-between">
+              <span class="text-[11px] text-slate-500 font-code">Staging: Assembly Bay 04</span>
+              <button type="button" onclick="filterMasterBy('urgent')" class="text-xs font-bold text-amber-700 dark:text-amber-400 hover:underline flex items-center gap-1 font-code">
+                <span>Buka Semua Expedite</span>
+                <span class="material-symbols-outlined text-[14px]">arrow_forward</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- PANEL 3: CAR AUDIT (CORRECTIVE ACTION REQUESTS) -->
+          <div class="bg-[var(--bg-surface)] rounded-xl border border-[var(--border-medium)] p-4 shadow-sm flex flex-col justify-between">
+            <div>
+              <div class="flex items-center justify-between border-b border-[var(--border-medium)] pb-3 mb-3">
+                <div class="flex items-center gap-2">
+                  <div class="w-7 h-7 rounded-lg bg-red-100 dark:bg-red-950 text-[#D32F2F] flex items-center justify-center">
+                    <span class="material-symbols-outlined text-[18px]">assignment_late</span>
+                  </div>
+                  <div>
+                    <h2 class="font-bold font-code text-xs text-[var(--text-main)] uppercase tracking-wider">3. CAR AUDIT (QA Findings)</h2>
+                    <p class="text-[11px] text-[var(--text-muted)] font-body">Log temuan ketidaksesuaian &amp; isolasi</p>
+                  </div>
+                </div>
+                <span class="text-[10px] font-bold font-code bg-red-100 text-red-800 px-2 py-0.5 rounded">DEFECT / HOLD</span>
+              </div>
+
+              <!-- CAR Audit Preview Table -->
+              <div class="overflow-x-auto">
+                <table class="w-full text-left font-code text-xs">
+                  <thead>
+                    <tr class="text-[10px] text-slate-400 border-b border-slate-100 dark:border-slate-800 uppercase">
+                      <th class="pb-1.5">ID CAR</th>
+                      <th class="pb-1.5">PO / Material</th>
+                      <th class="pb-1.5">Temuan Masalah</th>
+                      <th class="pb-1.5 text-right">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody id="dash-car-tbody">
+                    <!-- Populated dynamically by renderDashboard() -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="mt-4 pt-3 border-t border-[var(--border-medium)] flex items-center justify-between">
+              <span class="text-[11px] text-slate-500 font-code">Isolasi: Quarantine Zone C</span>
+              <button type="button" onclick="filterMasterBy('car')" class="text-xs font-bold text-red-700 dark:text-red-400 hover:underline flex items-center gap-1 font-code">
+                <span>Buka Semua Temuan CAR</span>
+                <span class="material-symbols-outlined text-[14px]">arrow_forward</span>
+              </button>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+    </section>
+
+    <section id="section-materialMaster" class="app-section w-full flex-1 flex flex-col px-4 lg:px-6 py-4">
+      <div class="max-w-[1720px] w-full mx-auto flex flex-col gap-5">
+        
+        <!-- Subheader Title -->
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <div class="flex items-center gap-2">
+              <h1 class="font-display font-extrabold text-2xl text-[var(--text-main)] tracking-tight">Material Master &amp; Receiving Audit Log</h1>
+              <span class="px-2 py-0.5 text-xs font-bold font-code bg-emerald-100 text-emerald-800 rounded-md border border-emerald-300">W-04</span>
+            </div>
+            <p class="text-[var(--text-muted)] text-xs mt-0.5">Real-time dock intake manifest verification, photographic evidence QA, and Google Sheets synchronization.</p>
+          </div>
+          <div class="flex items-center gap-2 font-code text-xs">
+            <button type="button" hidden data-hidden-control="material-input" onclick="navigateTo('mobileInspection')" class="touch-target-btn btn-primary-action h-9 min-h-[36px] text-xs gap-1.5">
+              <span class="material-symbols-outlined text-[16px]">add_a_photo</span>
+              <span>Input Foto Barang Baru [W-02]</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- COMPACT TOP TOOLBAR: MATERIAL MASTER MANIFEST -->
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[var(--bg-surface)] p-3 rounded-xl border border-[var(--border-medium)] shadow-sm font-code text-xs">
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="px-2 py-0.5 text-xs font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 rounded border border-emerald-300 dark:border-emerald-800">
+              W-04 // MANIFEST
+            </span>
+            <span class="text-[var(--text-muted)]">
+              Menampilkan: <strong id="master-count-display" class="text-[var(--text-main)] font-bold">4</strong> item
+            </span>
+            <div class="flex items-center gap-1 ml-1 flex-wrap">
+              <button type="button" onclick="filterMaterialTable('all')" class="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[var(--text-main)] font-semibold hover:bg-slate-200">Semua</button>
+              <button type="button" onclick="filterMaterialTable('urgent')" class="px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 font-semibold hover:bg-amber-200">⚡ Expedite</button>
+              <button type="button" onclick="filterMaterialTable('car')" class="px-2 py-0.5 rounded bg-red-100 dark:bg-red-950/60 text-red-800 dark:text-red-300 font-semibold hover:bg-red-200">⚠️ CAR Audit</button>
+              <button type="button" onclick="filterMaterialTable('partial')" class="px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300 font-semibold hover:bg-blue-200">📦 Partial</button>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <button type="button" onclick="navigateTo('dashboard')" class="px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 font-bold text-[var(--text-main)] flex items-center gap-1.5 shadow-sm">
+              <span class="material-symbols-outlined text-[16px] text-emerald-600">analytics</span>
+              <span>Buka Dashboard 📊</span>
+            </button>
+            <button type="button" hidden data-hidden-control="material-input" onclick="navigateTo('mobileInspection')" class="touch-target-btn btn-primary-action h-8 min-h-[32px] text-xs gap-1.5 px-3">
+              <span class="material-symbols-outlined text-[16px]">add_a_photo</span>
+              <span>+ Input Barang [W-02]</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- ROW 2: FILTER & TOOLBAR CONTROLS -->
+        <div class="bg-[var(--bg-surface)] rounded-xl border border-[var(--border-medium)] p-3 shadow-sm flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 font-code text-xs">
+          <div class="flex flex-1 flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+            <!-- Filter Search -->
+            <div class="relative flex-1 min-w-[260px]">
+              <div class="flex items-center border border-[var(--border-medium)] rounded-lg bg-[var(--bg-surface-subtle)] px-3 py-2">
+                <span class="material-symbols-outlined text-slate-400 text-[18px] mr-2">search</span>
+                <input type="text" id="table-filter-input" oninput="filterMaterialTable(this.value)" placeholder="Search PO No, Material Code, Vendor, or Description..." class="bg-transparent text-xs outline-none w-full"/>
+              </div>
+            </div>
+            <!-- Status Dropdown -->
+            <select id="table-status-filter" onchange="filterMaterialTable()" class="h-10 px-3 rounded-lg bg-[var(--bg-surface-subtle)] border border-[var(--border-medium)] text-xs font-semibold">
+              <option value="ALL">Status: Semua (All Manifest)</option>
+              <option value="URGENT">Status: ⚡ Expedite / Emergency</option>
+              <option value="CAR">Status: ⚠️ CAR Audit / Defect</option>
+              <option value="PARTIAL">Status: 📦 Partial Received</option>
+              <option value="COMPLETED">Status: ✅ Completed Only</option>
+              <option value="SKIPPED">Status: ⏩ Skipped (Rush Peak)</option>
+            </select>
+          </div>
+
+          <!-- Action Buttons -->
+          <div class="flex items-center gap-2.5 justify-end">
+            <button type="button" data-pc-permission="can_upload" hidden onclick="openBulkUploadModal()" class="touch-target-btn btn-secondary-action h-10 min-h-[40px] text-xs gap-1.5">
+              <span class="material-symbols-outlined text-[17px]">upload_file</span>
+              <span>Bulk Upload Data (Excel/CSV)</span>
+            </button>
+            <button type="button" data-pc-permission="can_create" hidden onclick="openDetailDrawer(null)" class="touch-target-btn btn-primary-action h-10 min-h-[40px] text-xs gap-1.5">
+              <span class="material-symbols-outlined text-[18px]">add</span>
+              <span>+ Add Manual Entry</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- ROW 3: MATERIAL MASTER DATA TABLE -->
+        <div class="bg-[var(--bg-surface)] rounded-xl border border-[var(--border-medium)] shadow-sm overflow-hidden flex flex-col">
+          <div class="bg-slate-50 dark:bg-slate-800/80 border-b border-[var(--border-medium)] px-4 py-2.5 flex items-center justify-between text-xs font-code">
+            <span class="font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">DATABASE://INVENTORY_MASTER_MANIFEST</span>
+            <button type="button" onclick="refreshMaterialData()" class="text-[var(--primary)] hover:underline flex items-center gap-1 font-bold">
+              <span class="material-symbols-outlined text-[15px]">refresh</span> Reload
+            </button>
+          </div>
+
+          <div class="w-full table-responsive-container">
+            <table class="w-full text-left border-collapse text-xs font-body" id="main-material-table">
+              <thead>
+                <tr class="border-b border-[var(--border-medium)] bg-slate-100/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-display font-bold uppercase tracking-wider text-[11px]">
+                  <th class="py-3 px-3 whitespace-nowrap">GRPC Ref No</th>
+                  <th class="py-3 px-3 whitespace-nowrap">PO No</th>
+                  <th class="py-3 px-3 whitespace-nowrap">Mat Code</th>
+                  <th class="py-3 px-4 min-w-[200px]">Item Description</th>
+                  <th class="py-3 px-4 min-w-[170px]">Vendor</th>
+                  <th class="py-3 px-3 text-center whitespace-nowrap">PO / RCV / REM</th>
+                  <th class="py-3 px-3 whitespace-nowrap">Rcv Date &amp; Inspector</th>
+                  <th class="py-3 px-3 text-center whitespace-nowrap">Photos</th>
+                  <th class="py-3 px-3 text-center whitespace-nowrap">Check Status</th>
+                  <th class="py-3 px-4 text-right whitespace-nowrap">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="material-table-body" class="divide-y divide-[var(--border-light)] font-code">
+                <!-- Rows injected dynamically via JavaScript -->
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Pagination Bar -->
+          <div class="bg-slate-50 dark:bg-slate-800/80 border-t border-[var(--border-medium)] px-4 py-3 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs font-code text-[var(--text-muted)]">
+            <span id="table-showing-count">Showing 1 to 4 of 34 entries</span>
+            <div class="flex items-center gap-1.5 font-bold">
+              <button class="w-7 h-7 rounded border border-slate-300 bg-white dark:bg-slate-900 text-slate-400" disabled>&lt;</button>
+              <button class="w-7 h-7 rounded bg-[var(--primary)] text-white shadow-xs">1</button>
+              <button class="w-7 h-7 rounded border border-slate-300 bg-white dark:bg-slate-900 text-slate-700">2</button>
+              <button class="w-7 h-7 rounded border border-slate-300 bg-white dark:bg-slate-900 text-slate-700">&gt;</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ==================================================================== -->
+    <!-- SECTION W-02: MOBILE & LAPTOP RECEIVING INSPECTION & PHOTO CHECK -->
+    <!-- ==================================================================== -->
+    <section id="section-mobileInspection" class="app-section w-full flex-1 flex flex-col items-center px-2 sm:px-3 pt-2 pb-6">
+      <div class="w-full max-w-[480px] mx-auto flex flex-col gap-2.5 pb-24 pt-0 mt-0">
+        
+        <!-- Header Info Card -->
+        <div class="bg-[var(--bg-surface)] rounded-xl p-3 border border-[var(--border-light)] shadow-sm flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span class="font-display font-bold text-sm text-[var(--text-main)]">Dock Intake Photo &amp; Checklist</span>
+            <span class="font-code text-[10px] bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded font-bold">W-02</span>
+          </div>
+          <span class="font-code text-[11px] text-[var(--primary)] font-semibold">BAY-04 / RCV</span>
+        </div>
+
+        <!-- STEP 1: ORDER IDENTIFICATION & MASTER LOOKUP -->
+        <div class="bg-[var(--bg-surface)] rounded-xl p-3.5 border border-[var(--border-light)] shadow-sm flex flex-col gap-2.5">
+          <div class="flex items-center justify-between pb-2 border-b border-[var(--border-light)]">
+            <div class="flex items-center gap-2">
+              <span class="w-5 h-5 rounded-full bg-[var(--secondary)] text-white text-[11px] font-bold flex items-center justify-center">1</span>
+              <span class="font-code text-xs font-extrabold uppercase text-[var(--text-main)]">Order Identification</span>
+            </div>
+            <span class="font-code text-[10px] px-2 py-0.5 rounded-full bg-sky-100 text-sky-800 font-bold border border-sky-300">[ERP_LOOKUP]</span>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2 font-code">
+            <div class="flex flex-col gap-1">
+              <label class="text-[10px] text-[var(--text-muted)] font-bold uppercase">PO Number</label>
+              <select id="insp-po-no" onchange="populateInspectionMaterials()" class="grpc-select"><option value="">Pilih PO No</option></select>
+            </div>
+            <div class="flex flex-col gap-1">
+              <label class="text-[10px] text-[var(--text-muted)] font-bold uppercase">Material Code</label>
+              <select id="insp-mat-code" onchange="window.appState.pendingPrintRef=null; executeMaterialLookup()" class="grpc-select"><option value="">Pilih Material No</option></select>
+            </div>
+          </div>
+
+          <button type="button" onclick="executeMaterialLookup()" class="touch-target-btn btn-secondary-action w-full h-10 min-h-[40px] text-xs gap-1.5">
+            <span class="material-symbols-outlined text-[17px]">search</span>
+            <span>Check Material Master</span>
+          </button>
+
+          <!-- Master Data Info Box -->
+          <div class="p-3 rounded-lg bg-sky-50/70 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800 flex flex-col gap-1.5 font-code text-xs">
+            <div class="flex items-start justify-between">
+              <span class="text-[10px] text-slate-500 font-bold uppercase">ITEM NAME:</span>
+              <span id="insp-item-desc" class="font-extrabold text-[var(--text-main)] text-right text-[11px] max-w-[210px]">DISC, SAFETY VALVE MDL 2755W</span>
+            </div>
+            <div class="flex items-start justify-between">
+              <span class="text-[10px] text-slate-500 font-bold uppercase">VENDOR:</span>
+              <span id="insp-vendor" class="text-slate-700 dark:text-slate-300 text-right text-[11px] truncate max-w-[210px]">OSA INDUSTRIES INDONESIA, PT</span>
+            </div>
+            
+            <div class="p-2 rounded bg-white dark:bg-slate-900 border border-sky-100 dark:border-sky-900 mt-1 flex justify-between items-center text-[11px]">
+              <span>PO: <strong id="insp-po-qty">10</strong></span>
+              <span>RCV: <strong id="insp-rcv-qty" class="text-[var(--primary)]">5</strong></span>
+              <span class="px-2 py-0.5 bg-amber-100 text-amber-900 border border-amber-300 rounded font-extrabold" id="insp-rem-qty">
+                5 REM
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- STEP 2: PHOTO CAPTURE & LIVE VIEWFINDER WITH WEBCAM & FILE UPLOAD -->
+        <div class="bg-[var(--bg-surface)] rounded-xl p-3.5 border border-[var(--border-light)] shadow-sm flex flex-col gap-2.5">
+          <div class="flex items-center justify-between pb-2 border-b border-[var(--border-light)]">
+            <div class="flex items-center gap-2">
+              <span class="w-5 h-5 rounded-full bg-[var(--primary)] text-white text-[11px] font-bold flex items-center justify-center">2</span>
+              <span class="font-code text-xs font-extrabold uppercase text-[var(--text-main)]">Capture Material Photo</span>
+            </div>
+            <span class="font-code text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold border border-emerald-300">LAPTOP / HP</span>
+          </div>
+
+          <!-- Viewfinder Frame (Supports Static Image Preview AND Live Video Stream) -->
+          <div class="camera-viewfinder relative overflow-hidden" id="mobile-viewfinder-box">
+            <!-- Live Webcam Video Stream (Visible when camera opened) -->
+            <video id="webcam-video-stream" autoplay playsinline muted class="hidden w-full h-full object-cover"></video>
+            
+            <!-- Captured or Default Photo Preview -->
+            <img id="mobile-photo-preview" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'/%3E" alt="Material Under Inspection" class="w-full h-full object-cover"/>
+
+            <!-- HUD Overlays -->
+            <div class="camera-grid-lines pointer-events-none"></div>
+            <div class="camera-corner-bracket tl pointer-events-none"></div>
+            <div class="camera-corner-bracket tr pointer-events-none"></div>
+            <div class="camera-corner-bracket bl pointer-events-none"></div>
+            <div class="camera-corner-bracket br pointer-events-none"></div>
+
+            <!-- Target Locked Reticle -->
+            <div class="absolute z-10 flex flex-col items-center gap-1 bg-black/60 backdrop-blur-xs px-3 py-1 rounded-lg border border-emerald-400/40 text-center pointer-events-none">
+              <div class="flex items-center gap-1.5 text-emerald-400 font-code text-[10px] font-bold uppercase">
+                <span class="material-symbols-outlined text-[16px] animate-pulse">center_focus_strong</span>
+                <span id="reticle-status-text">CAMERA READY · AUTO-COMPRESS</span>
+              </div>
+            </div>
+
+            <!-- Live Stamp Badge -->
+            <div class="absolute bottom-2 left-2 z-10 bg-black/75 backdrop-blur-xs text-emerald-300 px-2 py-0.5 rounded font-code text-[9px] uppercase border border-emerald-500/30 flex items-center gap-1 pointer-events-none">
+              <span class="material-symbols-outlined text-[10px]">location_on</span>
+              <span id="photo-timestamp-label">BAY-04 · 10:45 WIB</span>
+            </div>
+          </div>
+
+          <!-- Dedicated Dual Controls for HP & Laptop -->
+          <div class="flex flex-col gap-2 mt-1 w-full">
+            
+            <!-- Direct Mobile HP Camera Trigger -->
+            <label for="mobileDirectCameraInput" class="touch-target-btn btn-primary-action w-full text-xs gap-2 min-h-[48px] cursor-pointer shadow-md active:scale-95">
+              <span class="material-symbols-outlined text-[22px]">photo_camera</span>
+              <span class="font-bold">AMBIL GAMBAR DENGAN HP (KAMERA)</span>
+            </label>
+            <input type="file" id="mobileDirectCameraInput" accept="image/*" capture="environment" onchange="handleNativeCameraUpload(event)" class="hidden"/>
+
+            <div hidden class="grid grid-cols-2 gap-2">
+              <!-- Laptop Live Webcam Streaming -->
+              <button type="button" hidden id="btn-toggle-webcam" onclick="toggleWebcamStream()" class="touch-target-btn btn-secondary-action w-full text-xs gap-1 min-h-[44px] px-2">
+                <span class="material-symbols-outlined text-[18px]" id="webcam-icon-label">videocam</span>
+                <span id="webcam-btn-text" class="truncate">Kamera / Webcam</span>
+              </button>
+
+              <!-- Gallery / File Chooser (Laptop & HP Storage) -->
+              <label hidden for="cameraFileInput" class="touch-target-btn btn-outline-action w-full text-xs gap-1 min-h-[44px] px-2 cursor-pointer">
+                <span class="material-symbols-outlined text-[18px]">folder_open</span>
+                <span class="truncate">Pilih dari Galeri</span>
+              </label>
+              <input type="file" id="cameraFileInput" accept="image/*" onchange="handleNativeCameraUpload(event)" class="hidden"/>
+            </div>
+
+            <!-- Tombol Jepret Foto (Muncul otomatis saat webcam live aktif) -->
+            <button type="button" id="btn-snap-webcam" onclick="captureWebcamFrame()" class="hidden touch-target-btn btn-rush-skip w-full text-xs gap-2 py-3 shadow-lg animate-pulse">
+              <span class="material-symbols-outlined text-[22px]">camera</span>
+              <span class="font-bold">JEPRET FOTO SEKARANG (SNAP)</span>
+            </button>
+          </div>
+          
+          <div class="flex items-center justify-between text-[10px] font-code text-[var(--text-muted)] px-1">
+            <span>COMPRESSION: HTML5 CANVAS</span>
+            <span id="photo-size-badge" class="font-bold text-slate-800 dark:text-slate-200">~350 KB JPEG (FAST)</span>
+          </div>
+        </div>
+
+        <!-- STEP 3: PHYSICAL CONDITION CHECKLIST (OR SKIP) -->
+        <div class="bg-[var(--bg-surface)] rounded-xl p-3.5 border border-[var(--border-light)] shadow-sm flex flex-col gap-3">
+          <div class="flex items-center justify-between pb-2 border-b border-[var(--border-light)]">
+            <div class="flex items-center gap-2">
+              <span class="w-5 h-5 rounded-full bg-slate-800 text-white text-[11px] font-bold flex items-center justify-center">3</span>
+              <span class="font-code text-xs font-extrabold uppercase text-[var(--text-main)]">Condition &amp; Status Checklist</span>
+            </div>
+            <span class="font-code text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-2 py-0.5 rounded-full font-bold">7 ITEMS</span>
+          </div>
+
+          <!-- 3.1 Packaging -->
+          <div class="flex flex-col gap-1.5 border-b border-[var(--border-light)] pb-2">
+            <span class="font-code text-[11px] font-extrabold uppercase">3.1 Packaging</span>
+            <div class="inspection-radio-group">
+              <div class="inspection-radio-card active-good" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="selectInspectionRadio(this, 'pkg', 'Good')">
+                <input type="radio" name="chk_pkg" value="Good" checked/>
+                <span class="material-symbols-outlined text-[15px]">check_circle</span> Good
+              </div>
+              <div class="inspection-radio-card" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="selectInspectionRadio(this, 'pkg', 'Bad')">
+                <input type="radio" name="chk_pkg" value="Bad"/>
+                <span class="material-symbols-outlined text-[15px]">cancel</span> Bad
+              </div>
+            </div>
+          </div>
+
+          <!-- 3.2 Quantity Delivery -->
+          <div class="flex flex-col gap-1.5 border-b border-[var(--border-light)] pb-2">
+            <span class="font-code text-[11px] font-extrabold uppercase">3.2 Quantity Delivery</span>
+            <div class="inspection-radio-group">
+              <div class="inspection-radio-card" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="selectInspectionRadio(this, 'qty', 'Full Received')">
+                <input type="radio" name="chk_qty" value="Full Received"/>
+                <span>Full Received</span>
+              </div>
+              <div class="inspection-radio-card active-urgent" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="selectInspectionRadio(this, 'qty', 'Partial Received')">
+                <input type="radio" name="chk_qty" value="Partial Received" checked/>
+                <span>Partial Received</span>
+              </div>
+            </div>
+            <!-- Remaining Qty Input -->
+            <div class="flex items-center justify-between p-2 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 mt-1 font-code text-xs">
+              <span class="font-bold text-amber-900 dark:text-amber-200 uppercase text-[10px]">Remaining Qty:</span>
+              <div class="flex items-center gap-1.5">
+                <button type="button" onclick="adjustRemainingQty(-1)" aria-label="Kurangi sisa quantity" class="w-7 h-7 rounded bg-white dark:bg-slate-900 border border-slate-300 font-bold">-</button>
+                <input type="number" id="input-remain-qty" min="0" step="any" value="0" class="w-12 h-7 text-center rounded border border-slate-300 font-bold bg-white dark:bg-slate-900 outline-none p-0"/>
+                <button type="button" onclick="adjustRemainingQty(1)" aria-label="Tambah sisa quantity" class="w-7 h-7 rounded bg-white dark:bg-slate-900 border border-slate-300 font-bold">+</button>
+                <span class="font-bold text-slate-600 text-[11px] ml-1">PCS</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 3.3 Documents Completion -->
+          <div class="flex flex-col gap-1.5 border-b border-[var(--border-light)] pb-2">
+            <span class="font-code text-[11px] font-extrabold uppercase">3.3 Documents Completion</span>
+            <div class="inspection-radio-group">
+              <div class="inspection-radio-card active-good" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="selectInspectionRadio(this, 'doc', 'Complete')">
+                <input type="radio" name="chk_doc" value="Complete" checked/>
+                <span>Complete</span>
+              </div>
+              <div class="inspection-radio-card" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="selectInspectionRadio(this, 'doc', 'Incomplete')">
+                <input type="radio" name="chk_doc" value="Incomplete"/>
+                <span>Incomplete</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 3.4 Material Specification -->
+          <div class="flex flex-col gap-1.5 border-b border-[var(--border-light)] pb-2">
+            <span class="font-code text-[11px] font-extrabold uppercase">3.4 Material Specification</span>
+            <div class="inspection-radio-group">
+              <div class="inspection-radio-card active-good" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="selectInspectionRadio(this, 'spec', 'Suitable')">
+                <input type="radio" name="chk_spec" value="Suitable" checked/>
+                <span>Suitable</span>
+              </div>
+              <div class="inspection-radio-card" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="selectInspectionRadio(this, 'spec', 'Unsuitable')">
+                <input type="radio" name="chk_spec" value="Unsuitable"/>
+                <span>Unsuitable</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 3.5 Material Quality -->
+          <div class="flex flex-col gap-1.5 border-b border-[var(--border-light)] pb-2">
+            <span class="font-code text-[11px] font-extrabold uppercase">3.5 Material Quality</span>
+            <div class="inspection-radio-group">
+              <div class="inspection-radio-card active-good" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="selectInspectionRadio(this, 'qual', 'Good')">
+                <input type="radio" name="chk_qual" value="Good" checked/>
+                <span>Good</span>
+              </div>
+              <div class="inspection-radio-card" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="selectInspectionRadio(this, 'qual', 'Bad')">
+                <input type="radio" name="chk_qual" value="Bad"/>
+                <span>Bad</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 3.6 Accessories Completion -->
+          <div class="flex flex-col gap-1.5 border-b border-[var(--border-light)] pb-2">
+            <span class="font-code text-[11px] font-extrabold uppercase">3.6 Accessories Completion</span>
+            <div class="grid grid-cols-3 gap-2">
+              <div class="inspection-radio-card" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="selectInspectionRadio(this, 'acc', 'Complete')">
+                <input type="radio" name="chk_acc" value="Complete"/>
+                <span>Complete</span>
+              </div>
+              <div class="inspection-radio-card" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="selectInspectionRadio(this, 'acc', 'Incomplete')">
+                <input type="radio" name="chk_acc" value="Incomplete"/>
+                <span>Incomplete</span>
+              </div>
+              <div class="inspection-radio-card active-good" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="selectInspectionRadio(this, 'acc', 'None')">
+                <input type="radio" name="chk_acc" value="None" checked/>
+                <span>None</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 3.7 Ordering Status -->
+          <div class="flex flex-col gap-1.5 border-b border-[var(--border-light)] pb-2">
+            <span class="font-code text-[11px] font-extrabold uppercase">3.7 Ordering Priority Status</span>
+            <div class="grid grid-cols-3 gap-2">
+              <div class="inspection-radio-card active-good" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="selectInspectionRadio(this, 'prio', 'Normal')">
+                <input type="radio" name="chk_prio" value="Normal" checked/>
+                <span>Normal</span>
+              </div>
+              <div class="inspection-radio-card" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="selectInspectionRadio(this, 'prio', 'Urgent')">
+                <input type="radio" name="chk_prio" value="Urgent"/>
+                <span>Urgent</span>
+              </div>
+              <div class="inspection-radio-card" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="selectInspectionRadio(this, 'prio', 'Emergency')">
+                <input type="radio" name="chk_prio" value="Emergency"/>
+                <span>Emerg.</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 3.8 Checked By & Remarks -->
+          <div class="flex flex-col gap-2 pt-1 font-code">
+            <label class="text-[11px] font-bold uppercase">Checked By Authority</label>
+            <select id="insp-checked-by" class="h-10 px-3 rounded-lg bg-[var(--bg-surface-subtle)] border border-[var(--border-medium)] text-xs font-semibold">
+              <option selected>RAMSES SITOMP (MMD - PLANNER)</option>
+              <option>SARJONI (MSD - RECEIVING INTAKE)</option>
+              <option>HENDRA KURNIAWAN (QA/QC INSPECTOR)</option>
+              <option>AGUS PRASETYO (MAINTENANCE PLANNING)</option>
+            </select>
+
+            <label class="text-[11px] font-bold uppercase mt-1">Inspection Remarks</label>
+            <textarea id="insp-remarks" rows="2" placeholder="Notes on packaging, seal tags, or defect..." class="p-2.5 rounded-lg bg-[var(--bg-surface-subtle)] border border-[var(--border-medium)] text-xs font-body outline-none"></textarea>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- STICKY BOTTOM ACTIONS (>= 48PX TARGETS) -->
+      <div class="fixed bottom-0 left-0 right-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md p-3 border-t border-[var(--border-light)] flex justify-center shadow-2xl no-print">
+        <div class="w-full max-w-[480px] flex items-center gap-2.5">
+          <!-- Orange Rush Skip Button -->
+          <button type="button" onclick="submitInspection(true)" class="touch-target-btn btn-rush-skip flex-1 text-xs gap-1.5">
+            <span class="material-symbols-outlined text-[18px]">bolt</span>
+            <span>Skip & Save &amp; Quick Save</span>
+          </button>
+          <!-- Green Affirmative Save Button -->
+          <button type="button" onclick="submitInspection(false)" class="touch-target-btn btn-primary-action flex-[1.4] text-xs gap-2">
+            <span class="material-symbols-outlined text-[18px]">check_circle</span>
+            <span>Complete &amp; Save</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================================================================== -->
+    <!-- SECTION W-08: USER & ACCESS ROLE MANAGEMENT (ADMIN PANEL) -->
+    <!-- ==================================================================== -->
+    <section id="section-userAdmin" class="app-section w-full flex-1 flex flex-col px-4 lg:px-6 py-4">
+      <div class="max-w-[1720px] w-full mx-auto flex flex-col gap-5">
+        
+        <!-- Header -->
+        <div class="w-full bg-[var(--bg-surface)] rounded-xl p-5 border border-[var(--border-medium)] shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div class="flex flex-col gap-1">
+            <div class="flex items-center gap-2">
+              <span class="font-code text-xs bg-slate-900 text-white font-bold px-2 py-0.5 rounded">SEC-MODULE: W-08</span>
+              <span class="font-code text-xs bg-emerald-100 text-emerald-800 font-semibold px-2 py-0.5 rounded">RBAC AUTHORITY</span>
+            </div>
+            <h1 class="font-display font-bold text-xl lg:text-2xl text-[var(--text-main)]">User &amp; Role Access Management (SYS_USERS)</h1>
+            <p class="text-xs text-[var(--text-muted)]">Configure field inspector accounts, password credentials, and granular functional permissions in Google Sheets.</p>
+          </div>
+          <button type="button" data-pc-permission="can_create" hidden onclick="openNewUserDrawer()" class="touch-target-btn btn-primary-action text-xs gap-1.5">
+            <span class="material-symbols-outlined text-[17px]">person_add</span>
+            <span>+ Add New User</span>
+          </button>
+        </div>
+
+        <!-- Grid: Table (Left 7 Cols) + Permission Editor (Right 5 Cols) -->
+        <div class="grid grid-cols-1 xl:grid-cols-12 gap-5 items-start">
+          
+          <!-- Users Table -->
+          <div class="xl:col-span-7 bg-[var(--bg-surface)] rounded-xl border border-[var(--border-medium)] shadow-sm overflow-hidden flex flex-col">
+            <div class="bg-slate-50 dark:bg-slate-800 px-4 py-2.5 border-b border-[var(--border-medium)] font-code text-xs font-bold text-slate-700 dark:text-slate-300 flex justify-between">
+              <span>REGISTERED OPERATOR PRINCIPALS</span>
+              <span id="user-count-badge">4 ACCOUNTS</span>
+            </div>
+            <div class="w-full table-responsive-container">
+              <table class="w-full text-left text-xs font-body" id="users-table">
+                <thead>
+                  <tr class="bg-slate-100 dark:bg-slate-800/60 font-code font-bold uppercase text-[11px] border-b border-[var(--border-medium)]">
+                    <th class="p-3">Username</th>
+                    <th class="p-3">Full Name</th>
+                    <th class="p-3">Role</th>
+                    <th class="p-3">Permissions</th>
+                    <th class="p-3">Status</th>
+                    <th class="p-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="users-table-body" class="divide-y divide-[var(--border-light)] font-code">
+                  <!-- Injected via JavaScript -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- RBAC Permission Drawer / Form -->
+          <div class="xl:col-span-5 bg-[var(--bg-surface)] rounded-xl border border-[var(--border-medium)] shadow-md overflow-hidden flex flex-col">
+            <div class="bg-[var(--primary)] text-white p-4 flex flex-col gap-1">
+              <span class="font-code text-[11px] uppercase tracking-wider text-emerald-100">[CONFIGURING PERMISSIONS]</span>
+              <h2 id="rbac-editor-title" class="font-display font-bold text-base text-white">Edit User: sarjoni.rec</h2>
+            </div>
+
+            <form onsubmit="saveUserPermissionsForm(event)" class="p-5 flex flex-col gap-4 font-body text-xs">
+              <div class="grid grid-cols-2 gap-3 font-code">
+                <div class="flex flex-col gap-1">
+                  <label class="font-bold text-slate-600 dark:text-slate-300 uppercase text-[10px]">Username</label>
+                  <input type="text" id="edit-username" required class="p-2 rounded-lg bg-[var(--bg-surface-subtle)] border border-[var(--border-medium)] text-xs font-bold"/>
+                </div>
+                <div class="flex flex-col gap-1">
+                  <label class="font-bold text-slate-600 dark:text-slate-300 uppercase text-[10px]">Full Name</label>
+                  <input type="text" id="edit-fullname" required class="p-2 rounded-lg bg-[var(--bg-surface-subtle)] border border-[var(--border-medium)] text-xs"/>
+                </div>
+              </div>
+
+              <div class="flex flex-col gap-1 font-code">
+                <label class="font-bold text-slate-600 dark:text-slate-300 uppercase text-[10px]">New Password / PIN</label>
+                <input type="password" id="edit-password" placeholder="Leave blank to keep unchanged" class="p-2 rounded-lg bg-[var(--bg-surface-subtle)] border border-[var(--border-medium)] text-xs"/>
+              </div>
+
+              <!-- Primary Role -->
+              <div class="flex flex-col gap-1.5 p-3 rounded-lg bg-slate-50 dark:bg-slate-800 border border-[var(--border-medium)] font-code">
+                <label class="font-bold uppercase text-[10px]">System Role</label>
+                <div class="grid grid-cols-2 gap-2">
+                  <label class="flex items-center gap-2 p-2 rounded bg-white dark:bg-slate-900 border border-slate-300 cursor-pointer">
+                    <input type="radio" name="edit_role" value="ADMIN" id="role-admin-radio"/>
+                    <span class="font-bold">ADMIN (Administrator)</span>
+                  </label>
+                  <label class="flex items-center gap-2 p-2 rounded bg-white dark:bg-slate-900 border border-slate-300 cursor-pointer">
+                    <input type="radio" name="edit_role" value="USER" id="role-user-radio" checked/>
+                    <span class="font-bold">USER (Field Inspector)</span>
+                  </label>
+                </div>
+              </div>
+
+              <!-- 6 Granular Permissions Checkboxes -->
+              <div class="flex flex-col gap-2 font-code">
+                <label class="font-bold uppercase text-[10px] text-slate-700 dark:text-slate-300">Granular Functional Permissions</label>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <label class="flex items-center gap-2 p-2 rounded bg-[var(--bg-surface-subtle)] border border-[var(--border-medium)] cursor-pointer">
+                    <input type="checkbox" id="perm-view" checked class="w-4 h-4 text-[var(--primary)] rounded"/>
+                    <span>can_view (Lihat Data)</span>
+                  </label>
+                  <label class="flex items-center gap-2 p-2 rounded bg-[var(--bg-surface-subtle)] border border-[var(--border-medium)] cursor-pointer">
+                    <input type="checkbox" id="perm-report" checked class="w-4 h-4 text-[var(--primary)] rounded"/>
+                    <span>can_report (Cetak Laporan)</span>
+                  </label>
+                  <label class="flex items-center gap-2 p-2 rounded bg-[var(--bg-surface-subtle)] border border-[var(--border-medium)] cursor-pointer">
+                    <input type="checkbox" id="perm-create" class="w-4 h-4 text-[var(--primary)] rounded"/>
+                    <span>can_create (Tambah Data)</span>
+                  </label>
+                  <label class="flex items-center gap-2 p-2 rounded bg-[var(--bg-surface-subtle)] border border-[var(--border-medium)] cursor-pointer">
+                    <input type="checkbox" id="perm-edit" class="w-4 h-4 text-[var(--primary)] rounded"/>
+                    <span>can_edit (Ubah Data)</span>
+                  </label>
+                  <label class="flex items-center gap-2 p-2 rounded bg-[var(--bg-surface-subtle)] border border-[var(--border-medium)] cursor-pointer">
+                    <input type="checkbox" id="perm-upload" class="w-4 h-4 text-[var(--primary)] rounded"/>
+                    <span>can_upload (Unggah Excel)</span>
+                  </label>
+                  <label class="flex items-center gap-2 p-2 rounded bg-[var(--bg-surface-subtle)] border border-[var(--border-medium)] cursor-pointer">
+                    <input type="checkbox" id="perm-delete" class="w-4 h-4 text-red-600 rounded"/>
+                    <span class="text-red-600 font-bold">can_delete (Hapus Data)</span>
+                  </label>
+                </div>
+              </div>
+
+              <!-- Status Toggle -->
+              <div class="flex items-center justify-between p-3 rounded-lg bg-slate-50 dark:bg-slate-800 border border-[var(--border-medium)] font-code">
+                <span class="font-bold text-[11px] uppercase">Account Status</span>
+                <select id="edit-status" class="p-1.5 rounded border border-slate-300 text-xs font-bold">
+                  <option value="ACTIVE" selected>ACTIVE (Aktif)</option>
+                  <option value="INACTIVE">INACTIVE (Nonaktif)</option>
+                </select>
+              </div>
+
+              <!-- Submit Buttons -->
+              <div class="flex gap-2 pt-2">
+                <button type="submit" class="touch-target-btn btn-primary-action flex-1 text-xs gap-1.5">
+                  <span class="material-symbols-outlined text-[17px]">save</span>
+                  <span>Save Permissions &amp; Sync to Sheets</span>
+                </button>
+              </div>
+            </form>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================================================================== -->
+    <!-- SECTION W-07: OFFICIAL GRPC REPORT PRINT PREVIEW (A4 CANVAS) -->
+    <!-- ==================================================================== -->
+    <section id="section-printPreview" class="app-section w-full flex-1 flex flex-col items-center px-3 py-6 bg-slate-200 dark:bg-slate-950">
+      
+      <!-- Top Action Toolbar -->
+      <div class="w-full max-w-[900px] mx-auto mb-2.5 flex items-center justify-between gap-3 no-print pt-0 mt-0">
+        <button type="button" onclick="navigateTo('materialMaster')" class="touch-target-btn btn-outline-action h-10 min-h-[40px] text-xs gap-1.5">
+          <span class="material-symbols-outlined text-[16px]">arrow_back</span>
+          <span>Back to Material Master</span>
+        </button>
+        <div class="flex items-center gap-2">
+          <button type="button" onclick="sendReportEmailPrompt()" class="touch-target-btn btn-secondary-action h-10 min-h-[40px] text-xs gap-1.5">
+            <span class="material-symbols-outlined text-[17px]">mail</span>
+            <span>Send via Email</span>
+          </button>
+          <button type="button" onclick="printCurrentReport()" class="btn-action-report btn-primary-action" title="Cetak atau simpan PDF" aria-label="Cetak atau simpan PDF"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6 8V3h12v5M6 17H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 14h12v7H6zM17 11h1"/></svg></button>
+        </div>
+      </div>
+
+      <p id="print-selected-identity" class="no-print" style="width:100%;max-width:900px;font-size:12px;margin:0 auto 12px;color:var(--text-main)"></p>
+
+      <!-- Printable A4 Paper Sheet (Exact Replica of Report_GRPC.jpg) -->
+      <div class="printable-a4-sheet" id="official-grpc-paper">
+        <!-- Title -->
+        <div class="text-center pb-2.5 border-b-2 border-black mb-4">
+          <h1 class="font-display text-xl sm:text-2xl font-extrabold uppercase tracking-tight text-black m-0">
+            GOODS RECEIVED PHOTO AND CHECKLIST
+          </h1>
+        </div>
+
+        <!-- Boxed Metadata Grid -->
+        <div class="w-full border border-black mb-4 text-xs font-sans bg-white leading-normal">
+          <div class="grid grid-cols-1 md:grid-cols-12 divide-y md:divide-y-0 md:divide-x divide-black">
+            <!-- Left Column: PO, Vendor, Received By -->
+            <div class="md:col-span-5 p-2 space-y-1">
+              <div class="flex items-baseline">
+                <span class="font-bold w-24 shrink-0">PO</span>
+                <span id="print-po-no" class="font-semibold">: 37848</span>
+              </div>
+              <div class="flex items-baseline">
+                <span class="font-bold w-24 shrink-0">VENDOR</span>
+                <span id="print-vendor" class="uppercase font-medium">: OSA INDUSTRIES INDONESIA, PT</span>
+              </div>
+              <div class="flex items-baseline">
+                <span class="font-bold w-24 shrink-0">RECEIVED BY</span>
+                <span id="print-received-by" class="uppercase font-semibold">: SARJONI <span class="font-normal text-[11px]">(MSD - RECEIVING)</span></span>
+              </div>
+            </div>
+            <!-- Middle Column: Item Code, Item Name, Checked By -->
+            <div class="md:col-span-4 p-2 space-y-1">
+              <div class="flex items-baseline">
+                <span class="font-bold w-24 shrink-0">ITEM CODE</span>
+                <span id="print-mat-code" class="font-mono">: 193465</span>
+              </div>
+              <div class="flex items-baseline">
+                <span class="font-bold w-24 shrink-0">ITEM NAME</span>
+                <span id="print-item-desc" class="uppercase font-semibold">: DISC, SAFETY VALVE MDL 2755W</span>
+              </div>
+              <div class="flex items-baseline">
+                <span class="font-bold w-24 shrink-0">CHECKED BY</span>
+                <span id="print-checked-by" class="uppercase font-semibold">: RAMSES SITOMP <span class="font-normal text-[11px]">(MMD - PLANNER)</span></span>
+              </div>
+            </div>
+            <!-- Right Column: RCV Date, ID CAR -->
+            <div class="md:col-span-3 p-2 space-y-1">
+              <div class="flex items-baseline">
+                <span class="font-bold w-20 shrink-0">RCV DATE</span>
+                <span id="print-rcv-date">: 10/17/2026</span>
+              </div>
+              <div class="flex items-baseline">
+                <span class="font-bold w-20 shrink-0">ID CAR</span>
+                <span id="print-id-car" class="font-mono">: —</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Visual Evidence Block: 2 Side-by-Side Photos -->
+        <div class="w-full mb-4">
+          <div class="grid grid-cols-2 gap-3">
+            <!-- Left Photo: Package & Label -->
+            <div class="border-2 border-black flex flex-col bg-slate-900 overflow-hidden">
+              <div class="bg-black text-white px-2 py-0.5 text-[10px] font-mono flex justify-between">
+                <span>PHOTO 1: CARGO PACKAGE &amp; PART LABEL</span>
+                <span>VERIFIED OK</span>
+              </div>
+              <div class="w-full h-56 sm:h-64 bg-slate-800 overflow-hidden flex items-center justify-center">
+                <img id="print-photo-1" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAN7D5dfxcRmvSZqETcKJor5sTTek-MFexaFtdYc6QwlxZJL8yrgnISrV0WbWyiiAbuSDpuCICub2z-grgs2uZ7xp9q5ic81LfKHA1P30Q3qvzOSpyi9VECHfvnlOWVHFoGhyRoUIP-Cq2JAq94rHB5RQ7mQjCIwyYMhFgWKwdUr2-Y7JKAQrOKaRm1-iHhomGqAyCjyfdPKzU40AAY3Og7lB0oUylUKWLdWr0VHXo1yIP5Eidh2_o9" alt="Package label" class="w-full h-full object-cover object-[15%_28%] scale-125"/>
+              </div>
+            </div>
+            <!-- Right Photo: Inspector / Concourse -->
+            <div class="border-2 border-black flex flex-col bg-slate-900 overflow-hidden">
+              <div class="bg-black text-white px-2 py-0.5 text-[10px] font-mono flex justify-between">
+                <span>PHOTO 2: RECEIVING BAY &amp; INSPECTOR</span>
+                <span>BAY-04 WITNESS</span>
+              </div>
+              <div class="w-full h-56 sm:h-64 bg-slate-800 overflow-hidden flex items-center justify-center">
+                <img id="print-photo-2" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAN7D5dfxcRmvSZqETcKJor5sTTek-MFexaFtdYc6QwlxZJL8yrgnISrV0WbWyiiAbuSDpuCICub2z-grgs2uZ7xp9q5ic81LfKHA1P30Q3qvzOSpyi9VECHfvnlOWVHFoGhyRoUIP-Cq2JAq94rHB5RQ7mQjCIwyYMhFgWKwdUr2-Y7JKAQrOKaRm1-iHhomGqAyCjyfdPKzU40AAY3Og7lB0oUylUKWLdWr0VHXo1yIP5Eidh2_o9" alt="Inspector" class="w-full h-full object-cover object-[52%_28%] scale-125"/>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- CONDITION AND STATUS CHECKLIST TABLE -->
+        <div class="w-full mb-4">
+          <h2 class="font-display text-xs font-bold uppercase tracking-wider text-black mb-1 pb-1 border-b border-black">
+            CONDITION AND STATUS CHECKLIST
+          </h2>
+          <div class="border border-black overflow-hidden">
+            <table class="w-full border-collapse text-xs font-sans">
+              <thead>
+                <tr class="bg-slate-100 text-black border-b border-black font-bold uppercase text-[11px]">
+                  <th class="p-1.5 border-r border-black w-8 text-center">NO</th>
+                  <th class="p-1.5 border-r border-black w-48 text-left">CHECKING DESCRIPTION</th>
+                  <th class="p-1.5 border-r border-black text-left">CONDITION AND STATUS</th>
+                  <th class="p-1.5 text-left w-48">REMARKS</th>
+                </tr>
+              </thead>
+              <tbody id="official-checklist-tbody" class="divide-y divide-black text-black">
+                <!-- 1. Packaging -->
+                <tr>
+                  <td class="p-1.5 border-r border-black text-center font-bold">1</td>
+                  <td class="p-1.5 border-r border-black font-medium">Packaging</td>
+                  <td class="p-1.5 border-r border-black">
+                    <div class="flex items-center gap-6">
+                      <span class="inline-flex items-center gap-1.5 font-bold"><span class="w-3.5 h-3.5 border border-black flex items-center justify-center text-[10px]">✓</span> Good</span>
+                      <span class="inline-flex items-center gap-1.5 text-slate-400"><span class="w-3.5 h-3.5 border border-slate-400 inline-block"></span> Bad</span>
+                    </div>
+                  </td>
+                  <td class="p-1.5 text-slate-700">Clean wooden box packaging</td>
+                </tr>
+                <!-- 2. Quantity Delivery -->
+                <tr>
+                  <td class="p-1.5 border-r border-black text-center font-bold">2</td>
+                  <td class="p-1.5 border-r border-black font-medium">Quantity Delivery</td>
+                  <td class="p-1.5 border-r border-black">
+                    <div class="flex items-center gap-4 flex-wrap">
+                      <span class="inline-flex items-center gap-1.5 text-slate-400"><span class="w-3.5 h-3.5 border border-slate-400 inline-block"></span> Full Received</span>
+                      <span class="inline-flex items-center gap-1.5 font-bold"><span class="w-3.5 h-3.5 border border-black flex items-center justify-center text-[10px]">✓</span> Partial Received</span>
+                      <span class="text-[11px] bg-slate-100 px-1.5 py-0.5 border border-slate-300">Remaining Quantity: <strong id="print-rem-qty">5</strong></span>
+                    </div>
+                  </td>
+                  <td class="p-1.5 text-slate-700">Delivered 5 of 10 units</td>
+                </tr>
+                <!-- 3. Documents Completion -->
+                <tr>
+                  <td class="p-1.5 border-r border-black text-center font-bold">3</td>
+                  <td class="p-1.5 border-r border-black font-medium">Documents Completion</td>
+                  <td class="p-1.5 border-r border-black">
+                    <div class="flex items-center gap-6">
+                      <span class="inline-flex items-center gap-1.5 font-bold"><span class="w-3.5 h-3.5 border border-black flex items-center justify-center text-[10px]">✓</span> Complete</span>
+                      <span class="inline-flex items-center gap-1.5 text-slate-400"><span class="w-3.5 h-3.5 border border-slate-400 inline-block"></span> Incomplete</span>
+                    </div>
+                  </td>
+                  <td class="p-1.5 text-slate-700">Delivery Note &amp; Mill Cert</td>
+                </tr>
+                <!-- 4. Material Specification -->
+                <tr>
+                  <td class="p-1.5 border-r border-black text-center font-bold">4</td>
+                  <td class="p-1.5 border-r border-black font-medium">Material Specification</td>
+                  <td class="p-1.5 border-r border-black">
+                    <div class="flex items-center gap-6">
+                      <span class="inline-flex items-center gap-1.5 font-bold"><span class="w-3.5 h-3.5 border border-black flex items-center justify-center text-[10px]">✓</span> Suitable</span>
+                      <span class="inline-flex items-center gap-1.5 text-slate-400"><span class="w-3.5 h-3.5 border border-slate-400 inline-block"></span> Unsuitable</span>
+                    </div>
+                  </td>
+                  <td class="p-1.5 text-slate-700">Complies with tag 2755W</td>
+                </tr>
+                <!-- 5. Material Quality -->
+                <tr>
+                  <td class="p-1.5 border-r border-black text-center font-bold">5</td>
+                  <td class="p-1.5 border-r border-black font-medium">Material Quality</td>
+                  <td class="p-1.5 border-r border-black">
+                    <div class="flex items-center gap-6">
+                      <span class="inline-flex items-center gap-1.5 font-bold"><span class="w-3.5 h-3.5 border border-black flex items-center justify-center text-[10px]">✓</span> Good</span>
+                      <span class="inline-flex items-center gap-1.5 text-slate-400"><span class="w-3.5 h-3.5 border border-slate-400 inline-block"></span> Bad</span>
+                    </div>
+                  </td>
+                  <td class="p-1.5 text-slate-700">No surface pitting or cracks</td>
+                </tr>
+                <!-- 6. Material Accessories Completion -->
+                <tr>
+                  <td class="p-1.5 border-r border-black text-center font-bold">6</td>
+                  <td class="p-1.5 border-r border-black font-medium">Material Accessories Completion</td>
+                  <td class="p-1.5 border-r border-black">
+                    <div class="flex items-center gap-5">
+                      <span class="inline-flex items-center gap-1.5 text-slate-400"><span class="w-3.5 h-3.5 border border-slate-400 inline-block"></span> Complete</span>
+                      <span class="inline-flex items-center gap-1.5 text-slate-400"><span class="w-3.5 h-3.5 border border-slate-400 inline-block"></span> Incomplete</span>
+                      <span class="inline-flex items-center gap-1.5 font-bold"><span class="w-3.5 h-3.5 border border-black flex items-center justify-center text-[10px]">✓</span> None</span>
+                    </div>
+                  </td>
+                  <td class="p-1.5 text-slate-700">Standalone valve disc</td>
+                </tr>
+                <!-- 7. Ordering Status -->
+                <tr>
+                  <td class="p-1.5 border-r border-black text-center font-bold">7</td>
+                  <td class="p-1.5 border-r border-black font-medium">Ordering Status</td>
+                  <td class="p-1.5 border-r border-black">
+                    <div class="flex items-center gap-5">
+                      <span class="inline-flex items-center gap-1.5 font-bold"><span class="w-3.5 h-3.5 border border-black flex items-center justify-center text-[10px]">✓</span> Normal</span>
+                      <span class="inline-flex items-center gap-1.5 text-slate-400"><span class="w-3.5 h-3.5 border border-slate-400 inline-block"></span> Urgent</span>
+                      <span class="inline-flex items-center gap-1.5 text-slate-400"><span class="w-3.5 h-3.5 border border-slate-400 inline-block"></span> Emergency</span>
+                    </div>
+                  </td>
+                  <td class="p-1.5 text-slate-700">Stock replenishment</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- SIGNATURES AND APPROVAL BLOCKS WITH BLUE-INK GRAPHICS -->
+        <div class="w-full border border-black bg-white mb-3">
+          <div class="grid grid-cols-2 divide-x divide-black">
+            <!-- Left: Approved by: MSD/SP-Section Head -->
+            <div class="p-2.5 flex flex-col justify-between h-32 relative">
+              <div class="text-[11px] font-bold underline">Approved by:</div>
+              <!-- Blue-ink Signature SVG -->
+              <div class="flex items-center justify-center my-auto relative">
+                <svg class="w-32 h-12 text-blue-700 transform -rotate-2 select-none" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" viewBox="0 0 160 60">
+                  <path d="M 15 42 C 30 15, 38 12, 45 35 C 50 48, 52 50, 60 22 C 68 -2, 75 48, 85 30 C 95 15, 110 32, 130 25 M 35 30 L 140 38 M 55 18 C 70 30, 80 50, 115 46"/>
+                </svg>
+                <!-- Verification Stamp -->
+                <div class="absolute right-1 top-0 border-2 border-blue-600/40 text-blue-700/60 rounded-full w-16 h-16 flex flex-col items-center justify-center text-[7px] font-bold uppercase rotate-12 pointer-events-none">
+                  <span>MSD-QC</span>
+                  <span class="font-extrabold text-[8px] text-blue-800">APPROVED</span>
+                  <span class="text-[6px]">17 OCT 2026</span>
+                </div>
+              </div>
+              <div class="pt-1 text-center border-t border-slate-300 text-xs font-bold uppercase">
+                MSD/SP-Section Head
+              </div>
+            </div>
+
+            <!-- Right: Checked by: MSD/SP Receiving Unit Head -->
+            <div class="p-2.5 flex flex-col justify-between h-32 relative">
+              <div class="text-[11px] font-bold underline">Checked by:</div>
+              <!-- Blue-ink Signature SVG -->
+              <div class="flex items-center justify-center my-auto relative">
+                <svg class="w-32 h-12 text-indigo-700 transform rotate-1 select-none" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.3" viewBox="0 0 160 60">
+                  <path d="M 20 25 C 35 48, 42 12, 50 25 C 55 35, 62 10, 72 45 C 80 40, 95 18, 105 32 C 115 42, 125 15, 140 22 M 25 38 Q 70 42 135 28"/>
+                </svg>
+              </div>
+              <div class="pt-1 text-center border-t border-slate-300 text-xs font-bold uppercase">
+                MSD/SP Receiving Unit Head
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sheet Footer -->
+        <div class="pt-1 flex items-center justify-between text-[11px] font-sans border-t border-slate-400">
+          <span class="text-slate-500">Official GRPC Document · ISO-9001 Receiving Protocol</span>
+          <span class="font-bold">Page 1 of 1</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================================================================== -->
+    <!-- SECTION W-01: TERMINAL LOGIN & AUTHENTICATION GATEWAY -->
+    <!-- ==================================================================== -->
+    <section id="section-login" class="app-section active w-full flex-1 flex items-center justify-center p-4 py-8">
+      <div class="w-full max-w-[480px] bg-[var(--bg-surface)] rounded-2xl shadow-xl border border-[var(--border-medium)] flex flex-col overflow-hidden">
+        
+        <!-- Header Strip -->
+        <div class="w-full bg-[var(--primary)] text-white font-code text-[11px] px-5 py-2 flex justify-between items-center tracking-wider uppercase">
+          <div class="flex items-center gap-2">
+            <span class="material-symbols-outlined text-[15px]">verified_user</span>
+            <span class="font-bold">SEC-ID: AUTH-GATE-W01</span>
+          </div>
+          <span class="bg-emerald-900/50 px-2 py-0.5 rounded-full text-emerald-100 text-[10px] font-semibold">TERMINAL LOGIN</span>
+        </div>
+
+        <div class="p-6 md:p-8 flex flex-col gap-5">
+          <!-- Logo & Title -->
+          <div class="flex flex-col items-center text-center">
+            <div class="w-16 h-16 rounded-2xl bg-emerald-100 dark:bg-emerald-950/70 border border-emerald-300 dark:border-emerald-800 mb-3 flex items-center justify-center text-[var(--primary)] shadow-md">
+              <span class="material-symbols-outlined text-3xl">photo_camera_back</span>
+            </div>
+            <h2 class="font-display text-2xl font-bold tracking-tight text-[var(--text-main)]">GRPC System</h2>
+            <p class="text-xs md:text-sm text-[var(--text-muted)] mt-0.5">Goods Received Photo &amp; Checklist Terminal</p>
+          </div>
+          <!-- Login Form -->
+          <form onsubmit="return grpcSubmitLogin(event)" class="flex flex-col gap-4 font-body">
+            <div class="flex flex-col gap-1.5">
+              <label class="font-code text-xs uppercase font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                <span class="material-symbols-outlined text-[15px] text-[var(--primary)]">person</span> USERNAME
+              </label>
+              <div class="relative flex items-center rounded-xl bg-[var(--bg-surface-subtle)] border border-[var(--border-medium)] px-3.5 py-2.5">
+                <input type="text" id="login-username" autocomplete="username" required class="w-full bg-transparent font-code text-xs md:text-sm outline-none border-0 p-0 text-[var(--text-main)]"/>
+              </div>
+            </div>
+
+            <div class="flex flex-col gap-1.5">
+              <label class="font-code text-xs uppercase font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                <span class="material-symbols-outlined text-[15px] text-[var(--primary)]">lock</span> PASSWORD
+              </label>
+              <div class="relative flex items-center rounded-xl bg-[var(--bg-surface-subtle)] border border-[var(--border-medium)] px-3.5 py-2.5">
+                <input type="password" id="login-password" autocomplete="current-password" required class="w-full bg-transparent font-code text-xs md:text-sm outline-none border-0 p-0 text-[var(--text-main)]"/>
+                <button type="button" onclick="togglePasswordEye()" class="text-slate-400 hover:text-slate-600">
+                  <span class="material-symbols-outlined text-[18px]" id="login-eye-icon">visibility</span>
+                </button>
+              </div>
+            </div>
+
+            <button type="submit" id="login-submit-btn" class="touch-target-btn btn-primary-action w-full mt-2">
+              <span id="login-btn-text">SIGN IN TO TERMINAL →</span>
+            </button>
+          </form>
+
+          <p class="text-[11px] text-[var(--text-muted)] text-center leading-relaxed border-t border-[var(--border-light)] pt-4 mt-2">
+            Integrated with Google Sheets Datastore &amp; Drive Storage. Contact Administrator to reset credentials or adjust role permissions.
+          </p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ── 4. MODALS & DRAWERS ── -->
+
+  <!-- W-03: MODAL FOTO LAMA & OVERWRITE RETENTION -->
+  <div id="modal-photoOverwrite" class="modal-overlay">
+    <div class="modal-window max-w-lg p-5 flex flex-col gap-3 font-body">
+      <div class="flex items-center justify-between pb-2 border-b border-amber-200 bg-amber-50 dark:bg-amber-950/40 -mx-5 -mt-5 p-4 rounded-t-16 text-amber-900 dark:text-amber-200">
+        <div class="flex items-center gap-2">
+          <span class="w-8 h-8 rounded-full bg-amber-500 text-white flex items-center justify-center font-bold">!</span>
+          <div>
+            <h3 class="font-display font-bold text-sm">Existing Photo Detected [W-03]</h3>
+            <span class="text-[10px] font-code">FIFO RETENTION POLICY: MAX 2 REVISIONS</span>
+          </div>
+        </div>
+        <button type="button" onclick="closePhotoOverwriteModal()" class="text-slate-500 hover:text-slate-800">
+          <span class="material-symbols-outlined text-[20px]">close</span>
+        </button>
+      </div>
+
+      <p class="text-xs text-[var(--text-muted)] leading-relaxed">
+        Material <strong id="modal-conflict-matno" class="text-slate-900 dark:text-white">193465</strong> sudah memiliki foto tersimpan. Sistem memperbolehkan menyimpan maksimal <strong>2 riwayat foto</strong>. Jika Anda menyimpan foto baru ini, foto lama akan dipindahkan menjadi riwayat ke-2 dan foto baru ini menjadi foto aktif.
+      </p>
+
+      <div class="grid grid-cols-2 gap-3 my-1 font-code">
+        <!-- Box 1: Foto Lama -->
+        <div class="border border-slate-300 dark:border-slate-700 rounded-lg p-2 bg-slate-50 dark:bg-slate-800 flex flex-col gap-1">
+          <span class="text-[10px] font-bold text-slate-500">REV 1: ON FILE (OCT 17)</span>
+          <div class="w-full aspect-square rounded bg-slate-900 overflow-hidden flex items-center justify-center">
+            <img id="modal-img-old" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD_cj_cOekSKvGVXSP2XJZyOMWiiw1rXB6dDcgcUhBgo5pv8Uv96fC-CWvUZH_rlmLAXaKJ9r3GLnY22o3OBAb3fY9degMvZtH9b8ape6S4buS_8oyJlrHJni-i1PdLHJU5_H4lJ9WHRRJPoFmvw_Rf6hmQ6Gh9NC1ecQCl8AJxi_8DYpM4wF7QHa2LYc4WiBOfbXhKCEaK0GGX_ykh0JadcGhgT0Y1HQUDSj8zrJs" alt="Foto Lama" class="w-full h-full object-cover grayscale"/>
+          </div>
+          <span class="text-[9px] text-amber-700 font-bold bg-amber-50 rounded p-1 text-center">WILL MOVE TO PREVIOUS</span>
+        </div>
+        <!-- Box 2: Foto Baru -->
+        <div class="border-2 border-[var(--primary)] rounded-lg p-2 bg-emerald-50 dark:bg-emerald-950/40 flex flex-col gap-1">
+          <span class="text-[10px] font-bold text-[var(--primary)]">REV 2: NEW (NOV 04)</span>
+          <div class="w-full aspect-square rounded bg-slate-900 overflow-hidden flex items-center justify-center">
+            <img id="modal-img-new" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAN7D5dfxcRmvSZqETcKJor5sTTek-MFexaFtdYc6QwlxZJL8yrgnISrV0WbWyiiAbuSDpuCICub2z-grgs2uZ7xp9q5ic81LfKHA1P30Q3qvzOSpyi9VECHfvnlOWVHFoGhyRoUIP-Cq2JAq94rHB5RQ7mQjCIwyYMhFgWKwdUr2-Y7JKAQrOKaRm1-iHhomGqAyCjyfdPKzU40AAY3Og7lB0oUylUKWLdWr0VHXo1yIP5Eidh2_o9" alt="Foto Baru" class="w-full h-full object-cover"/>
+          </div>
+          <span class="text-[9px] text-[var(--primary)] font-bold bg-emerald-100 rounded p-1 text-center">ACTIVE PRIMARY PHOTO</span>
+        </div>
+      </div>
+
+      <div class="flex flex-col gap-2 pt-2">
+        <button type="button" onclick="confirmPhotoOverwriteAction()" class="touch-target-btn btn-primary-action w-full text-xs gap-1.5">
+          <span class="material-symbols-outlined text-[17px]">system_update_alt</span>
+          <span>Konfirmasi &amp; Timpa (Simpan 2 Riwayat)</span>
+        </button>
+        <button type="button" onclick="closePhotoOverwriteModal()" class="touch-target-btn btn-outline-action w-full text-xs">
+          <span>Batal / Retake Foto</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- W-05: MODAL BULK UPLOAD DATA EXCEL / CSV -->
+  <div id="modal-bulkUpload" class="modal-overlay">
+    <div class="modal-window max-w-xl p-5 flex flex-col gap-4 font-body">
+      <div class="flex items-center justify-between pb-3 border-b border-[var(--border-light)]">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 rounded-lg bg-sky-100 text-[#0288D1] flex items-center justify-center font-bold">
+            <span class="material-symbols-outlined text-[20px]">upload_file</span>
+          </div>
+          <div>
+            <h3 class="font-display font-bold text-base">Bulk Excel / CSV Ingestion [W-05]</h3>
+            <span class="text-[10px] font-code text-[var(--text-muted)]">Upload data PO &amp; Material massal</span>
+          </div>
+        </div>
+        <button type="button" onclick="closeBulkUploadModal()" class="text-slate-400 hover:text-slate-700">
+          <span class="material-symbols-outlined text-[20px]">close</span>
+        </button>
+      </div>
+
+      <!-- Drag & Drop Zone -->
+      <div onclick="document.getElementById('bulkFileInput').click()" class="border-2 border-dashed border-sky-400 hover:border-emerald-500 bg-sky-50/40 dark:bg-sky-950/20 rounded-xl p-6 flex flex-col items-center justify-center text-center cursor-pointer transition-colors">
+        <span class="material-symbols-outlined text-4xl text-[#0288D1] mb-2">cloud_upload</span>
+        <span class="font-bold text-sm text-[var(--text-main)]">Drag &amp; drop file .xlsx atau .csv di sini</span>
+        <span class="text-xs text-[var(--text-muted)] mt-1">Kolom didukung: po_no, material_no, description, mfg, pn, po_qty, rcv_qty, vendor_name, requestor</span>
+        <input type="file" id="bulkFileInput" accept=".xlsx, .xls, .csv" onchange="handleBulkFileSelect(event)" class="hidden"/>
+      </div>
+
+      <!-- Parameters -->
+      <div class="p-3 rounded-lg bg-slate-50 dark:bg-slate-800 text-xs font-code flex flex-col gap-2">
+        <span class="font-bold uppercase text-[10px]">Aturan Impor Otomatis:</span>
+        <label class="flex items-center gap-2">
+          <input type="checkbox" checked class="rounded text-[var(--primary)]"/>
+          <span>Hitung sisa barang otomatis: remaining = po_qty - rcv_qty</span>
+        </label>
+        <label class="flex items-center gap-2">
+          <input type="checkbox" checked class="rounded text-[var(--primary)]"/>
+          <span>Set status inspeksi menjadi: PENDING_INSPECTION</span>
+        </label>
+      </div>
+
+      <div class="flex items-center justify-between pt-2">
+        <button type="button" onclick="downloadSampleXlsx()" class="text-xs font-code text-[#0288D1] hover:underline flex items-center gap-1">
+          <span class="material-symbols-outlined text-[15px]">download</span> Download Format Template (.xlsx)
+        </button>
+        <div class="flex gap-2">
+          <button type="button" onclick="closeBulkUploadModal()" class="touch-target-btn btn-outline-action h-9 min-h-[36px] text-xs">
+            Batal
+          </button>
+          <button type="button" onclick="processBulkUploadAction()" class="touch-target-btn btn-primary-action h-9 min-h-[36px] text-xs gap-1">
+            <span class="material-symbols-outlined text-[16px]">sync</span> Proses Impor
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- W-06: DRAWER DETAIL & EDIT MATERIAL -->
+  <div id="drawer-detailMaterial" class="drawer-window p-6 flex flex-col overflow-y-auto font-body">
+    <div class="flex items-center justify-between pb-3 border-b border-[var(--border-light)] mb-4">
+      <div class="flex items-center gap-2">
+        <div class="w-8 h-8 rounded bg-emerald-100 text-[#1E7E34] flex items-center justify-center font-bold">
+          <span class="material-symbols-outlined text-[18px]">assignment</span>
+        </div>
+        <div>
+          <h3 class="font-display font-bold text-base">Detail &amp; Edit Material [W-06]</h3>
+          <span id="drawer-grpc-ref" class="font-code text-xs font-extrabold text-[#1E7E34]">GRPC-20261104-001</span>
+        </div>
+      </div>
+      <button type="button" onclick="closeDetailDrawer()" class="text-slate-400 hover:text-slate-700">
+        <span class="material-symbols-outlined text-[20px]">close</span>
+      </button>
+    </div>
+
+    <form onsubmit="saveDrawerDetailEdit(event)" class="flex flex-col gap-4 text-xs font-code">
+      <div class="grid grid-cols-2 gap-3">
+        <div class="flex flex-col gap-1">
+          <label class="font-bold text-[10px] uppercase">PO Number</label>
+          <input type="text" id="drawer-po-no" required class="p-2 rounded bg-[var(--bg-surface-subtle)] border border-[var(--border-medium)] font-bold"/>
+        </div>
+        <div class="flex flex-col gap-1">
+          <label class="font-bold text-[10px] uppercase">Material Code</label>
+          <input type="text" id="drawer-mat-code" required class="p-2 rounded bg-[var(--bg-surface-subtle)] border border-[var(--border-medium)] font-bold"/>
+        </div>
+      </div>
+
+      <div class="flex flex-col gap-1">
+        <label class="font-bold text-[10px] uppercase">Description</label>
+        <input type="text" id="drawer-item-desc" required class="p-2 rounded bg-[var(--bg-surface-subtle)] border border-[var(--border-medium)] font-sans font-semibold"/>
+      </div>
+
+      <div class="flex flex-col gap-1">
+        <label class="font-bold text-[10px] uppercase">Vendor</label>
+        <input type="text" id="drawer-vendor" required class="p-2 rounded bg-[var(--bg-surface-subtle)] border border-[var(--border-medium)] font-sans"/>
+      </div>
+
+      <div class="grid grid-cols-3 gap-2">
+        <div class="flex flex-col gap-1">
+          <label class="font-bold text-[10px] uppercase">PO Qty</label>
+          <input type="number" id="drawer-po-qty" oninput="recalcDrawerRemaining()" required class="p-2 rounded bg-[var(--bg-surface-subtle)] border border-[var(--border-medium)] text-center font-bold"/>
+        </div>
+        <div class="flex flex-col gap-1">
+          <label class="font-bold text-[10px] uppercase">Rcv Qty</label>
+          <input type="number" id="drawer-rcv-qty" oninput="recalcDrawerRemaining()" required class="p-2 rounded bg-[var(--bg-surface-subtle)] border border-[var(--border-medium)] text-center font-bold text-[#1E7E34]"/>
+        </div>
+        <div class="flex flex-col gap-1">
+          <label class="font-bold text-[10px] uppercase">Remain Qty</label>
+          <input type="number" id="drawer-rem-qty" readonly class="p-2 rounded bg-amber-50 border border-amber-300 text-center font-bold text-amber-900"/>
+        </div>
+      </div>
+
+      <!-- Dual Photo Preview -->
+      <div class="flex flex-col gap-2 pt-2 border-t border-[var(--border-light)]">
+        <span class="font-bold text-[11px] uppercase">Photographic Evidence</span>
+        <div class="grid grid-cols-2 gap-2">
+          <div class="border border-slate-300 rounded p-1.5 flex flex-col gap-1">
+            <span class="text-[9px] text-slate-500 font-bold">CURRENT ACTIVE PHOTO</span>
+            <div class="w-full h-28 bg-slate-900 rounded overflow-hidden flex items-center justify-center">
+              <img id="drawer-current-photo" src="" alt="Active Photo" class="w-full h-full object-cover"/>
+            </div>
+          </div>
+          <div class="border border-slate-300 rounded p-1.5 flex flex-col gap-1">
+            <span class="text-[9px] text-slate-500 font-bold">PREVIOUS REVISION</span>
+            <div class="w-full h-28 bg-slate-900 rounded overflow-hidden flex items-center justify-center">
+              <img id="drawer-prev-photo" src="" alt="Prev Photo" class="w-full h-full object-cover grayscale"/>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex justify-end gap-2 pt-4 mt-auto">
+        <button type="button" onclick="closeDetailDrawer()" class="touch-target-btn btn-outline-action h-10 min-h-[40px] text-xs">
+          Batal
+        </button>
+        <button type="submit" class="touch-target-btn btn-primary-action h-10 min-h-[40px] text-xs gap-1.5">
+          <span class="material-symbols-outlined text-[17px]">save</span>
+          <span>Simpan Perubahan</span>
+        </button>
+      </div>
+    </form>
+  </div>
+
+  <!-- ── 5. TOAST NOTIFICATION CONTAINER ── -->
+  <dialog id="modal-saveConfirm" oncancel="event.preventDefault(); finishSaveConfirm(false)">
+    <h2>Konfirmasi Simpan</h2><p id="save-confirm-message"></p>
+    <div class="confirm-actions"><button type="button" id="save-confirm-cancel" onclick="finishSaveConfirm(false)">Cancel</button><button type="button" onclick="finishSaveConfirm(true)">OK, Simpan</button></div>
+  </dialog>
+  <div id="grpcToastContainer" class="grpc-toast-container"></div>
+
+  <!-- Modular JavaScript Include (Supports both Javascript and JavaScript casing) -->
+  <!-- Configuration & Application Scripts -->
+  <script src="js/config.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

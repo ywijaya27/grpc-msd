@@ -1,0 +1,12 @@
+# Backend Apps Script & Old Monolith Files
+backend/
+*.txt
+Javascript.html
+Stylesheet.html
+build-migration.js
+
+# OS / Editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
