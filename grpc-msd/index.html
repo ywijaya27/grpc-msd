@@ -61,7 +61,7 @@
     window.grpcSubmitLogin = function(event) {
       event.preventDefault();
       if (typeof window.handleLoginSubmit !== 'function') {
-        window.grpcBootError('Javascript belum dapat dijalankan. Perbarui Code.gs, Index, Javascript dan Stylesheet dari paket yang sama, lalu deployment versi baru.');
+        window.grpcBootError('Javascript belum dapat dijalankan. Pastikan folder js/ ikut ter-upload ke GitHub, lalu tekan Ctrl+Shift+R.');
         return false;
       }
       window.handleLoginSubmit(event);
@@ -75,7 +75,7 @@
       if (!window.grpcBooted && event.message) window.grpcBootError(event.message);
     });
     window.addEventListener('load', function() {
-      if (!window.grpcBooted) window.grpcBootError('Script aplikasi belum berhasil dimuat. Periksa file HTML Javascript dan versi deployment.');
+      if (!window.grpcBooted) window.grpcBootError('Script aplikasi belum berhasil dimuat. Pastikan js/config.js, js/api.js dan js/app.js ada di repository, lalu tekan Ctrl+Shift+R.');
     });
   </script>
 
@@ -1593,8 +1593,8 @@
   <div id="grpcToastContainer" class="grpc-toast-container"></div>
 
   <!-- Modular JavaScript Include (Supports both Javascript and JavaScript casing) -->
-  <!-- Configuration & Application Scripts -->
   <script src="js/config.js"></script>
+  <script src="js/api.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

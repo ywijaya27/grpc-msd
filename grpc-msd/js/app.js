@@ -1,4 +1,4 @@
-window.grpcBuildId = "GRPC-ROWPRINT-20261105-02";
+window.grpcBuildId = "GRPC-GHPAGES-20261105-01";
 /**
  * ============================================================================
  * GOODS RECEIVED PHOTO AND CHECKLIST (GRPC) - JAVASCRIPT ENGINE
@@ -400,7 +400,7 @@ function toggleWebcamStream() {
   } : null);
 
   if (!md || !md.getUserMedia) {
-    showToast('Browser atau izin iframe Google Apps Script membatasi akses webcam langsung. Buka file picker...', 'warning');
+    showToast('Browser membatasi akses webcam langsung. Buka file picker...', 'warning');
     document.getElementById('cameraFileInput').click();
     return;
   }
@@ -1451,44 +1451,6 @@ function isPC() {
   return !(/Android|iPhone|iPad|iPod|Mobile|Tablet/i.test(ua) || (/Macintosh/i.test(ua)&&navigator.maxTouchPoints>1));
 }
 function updateDeviceMode() { document.body.classList.toggle('pc-device',isPC()); enforcePermissionGating(); }
-async function api(name, ...args) {
-  if (name !== 'loginUser') {
-    args.push(window.appState.sessionToken);
-  }
-  const requestToken = window.appState.sessionToken;
-
-  if (!CONFIG.GAS_URL || CONFIG.GAS_URL.includes('MASUKKAN_URL')) {
-    throw new Error('URL Backend Google Apps Script belum diisi di js/config.js. Buka js/config.js lalu masukkan URL deployment Web App GAS Anda.');
-  }
-
-  try {
-    const response = await fetch(CONFIG.GAS_URL, {
-      method: 'POST',
-      redirect: 'follow',
-      body: JSON.stringify({
-        action: name,
-        args: args
-      })
-    });
-
-    if (!response.ok) {
-      throw new Error('HTTP ' + response.status + ': ' + response.statusText);
-    }
-
-    const r = await response.json();
-    if (name !== 'loginUser' && requestToken !== window.appState.sessionToken) {
-      throw new Error('Sesi berubah.');
-    }
-    if (r && r.success) {
-      return r;
-    } else {
-      throw new Error((r && r.message) || 'Operasi gagal.');
-    }
-  } catch (err) {
-    throw new Error(err.message || 'Koneksi ke backend Google Apps Script gagal.');
-  }
-}
-
 function logoutApp() {
   api('logoutUser').catch(()=>{}); stopWebcamStream();
   window.appState.currentUser=null; window.appState.sessionToken=null; window.appState.materials=[]; window.appState.users=[]; window.appState.activeInspection={}; window.appState.printRef=null; window.appState.printItem=null; window.appState.printRequestId++; window.appState.pendingPrintRef=null;
